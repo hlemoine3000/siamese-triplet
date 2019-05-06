@@ -1,5 +1,5 @@
 import numpy as np
-
+import torch
 
 class Metric:
     def __init__(self):
@@ -53,14 +53,14 @@ class AverageNonzeroTripletsMetric(Metric):
         self.values = []
 
     def __call__(self, outputs, target, loss):
-        self.values.append(loss[1])
+        self.values.append(loss)
         return self.value()
 
     def reset(self):
         self.values = []
 
     def value(self):
-        return np.mean(self.values)
+        return torch.mean(torch.stack(self.values))
 
     def name(self):
         return 'Average nonzero triplets'

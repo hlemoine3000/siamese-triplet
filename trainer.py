@@ -1,94 +1,228 @@
 import torch
 import numpy as np
 
+from torch import nn
+import torch.nn.functional as F
+from torch.nn.modules.loss import _Loss
+from torch.optim import Optimizer
+from torch.optim.lr_scheduler import _LRScheduler
+from torch.utils.data import DataLoader
+import pandas as pd
+import utils
 
-def fit(train_loader, val_loader, model, loss_fn, optimizer, scheduler, n_epochs, cuda, log_interval, metrics=[],
-        start_epoch=0):
-    """
-    Loaders, model, loss function and metrics should work together for a given task,
-    i.e. The model should be able to process data output of loaders,
-    loss function should process target output of loaders and outputs from the model
+class Triplet_Trainer(object):
+    def __init__(self,
+                 model: nn.Module,
+                 miner: utils.Triplet_Miner,
+                 loss: _Loss,
+                 optimizer: Optimizer,
+                 scheduler: _LRScheduler,
+                 device,
+                 plotter: utils.VisdomLinePlotter,
+                 margin: int,
+                 embedding_size: int):
 
-    Examples: Classification: batch loader, classification model, NLL loss, accuracy metric
-    Siamese network: Siamese loader, siamese model, contrastive loss
-    Online triplet learning: batch loader, embedding model, online triplet loss
-    """
-    for epoch in range(0, start_epoch):
-        scheduler.step()
+        self.model = model
+        self.miner = miner
+        self.optimizer = optimizer
+        self.scheduler = scheduler
+        self.plotter = plotter
+        self.margin = margin
+        self.embedding_size = embedding_size
 
-    for epoch in range(start_epoch, n_epochs):
-        scheduler.step()
+        self.device = device
 
-        # Train stage
-        train_loss, metrics = train_epoch(train_loader, model, loss_fn, optimizer, cuda, log_interval, metrics)
+        self.step = 0
+        # self.loss_function = utils.TripletLoss(self.margin)
+        self.loss = loss
 
-        message = 'Epoch: {}/{}. Train set: Average loss: {:.4f}'.format(epoch + 1, n_epochs, train_loss)
-        for metric in metrics:
-            message += '\t{}: {}'.format(metric.name(), metric.value())
+    def Train_Epoch(self,
+                    train_loader: DataLoader):
 
-        val_loss, metrics = test_epoch(val_loader, model, loss_fn, cuda, metrics)
-        val_loss /= len(val_loader)
+        self.model.train()
 
-        message += '\nEpoch: {}/{}. Validation set: Average loss: {:.4f}'.format(epoch + 1, n_epochs,
-                                                                                 val_loss)
-        for metric in metrics:
-            message += '\t{}: {}'.format(metric.name(), metric.value())
+        # Training
+        self.scheduler.step()
+        for local_batch, local_labels in train_loader:
+            # Transfer to GPU
+            local_batch = local_batch.to(self.device)
+            embeddings = self.model.forward(local_batch)
 
-        print(message)
+            triplets = self.miner.get_triplets(embeddings.cpu(), local_labels)
 
+            a = embeddings[triplets[:, 0]]
+            p = embeddings[triplets[:, 1]]
+            n = embeddings[triplets[:, 2]]
 
-def train_epoch(train_loader, model, loss_fn, optimizer, cuda, log_interval, metrics):
-    for metric in metrics:
-        metric.reset()
+            # loss = F.triplet_margin_loss(a, p, n, margin=self.margin)
+            loss = self.loss(a, p, n)
+            self.optimizer.zero_grad()
+            loss.backward()
+            self.optimizer.step()
 
-    model.train()
-    losses = []
-    total_loss = 0
+            print('Loss {:.4f}'.format(loss.item()))
 
-    for batch_idx, (data, target) in enumerate(train_loader):
-        target = target if len(target) > 0 else None
-        if not type(data) in (tuple, list):
-            data = (data,)
-        if cuda:
-            data = tuple(d.cuda() for d in data)
-            if target is not None:
-                target = target.cuda()
+            self.plotter.plot('loss', 'step', 'train', 'Triplet Loss', self.step, loss.item())
+            self.plotter.plot('triplet number', 'step', 'train', 'Triplet Mining', self.step, triplets.size(0))
 
+            self.step += 1
 
-        optimizer.zero_grad()
-        outputs = model(*data)
+    def Evaluate(self,
+                 test_loader: DataLoader,
+                 name='validation'):
 
-        if type(outputs) not in (tuple, list):
-            outputs = (outputs,)
+        embeddings1 = np.empty((0, self.embedding_size))
+        embeddings2 = np.empty((0, self.embedding_size))
+        issame_array = np.empty(0)
 
-        loss_inputs = outputs
-        if target is not None:
-            target = (target,)
-            loss_inputs += target
+        self.model.eval()
 
-        loss_outputs = loss_fn(*loss_inputs)
-        loss = loss_outputs[0] if type(loss_outputs) in (tuple, list) else loss_outputs
-        losses.append(loss.item())
-        total_loss += loss.item()
-        loss.backward()
-        optimizer.step()
+        with torch.no_grad():
+            for images_batch, issame, path_batch in test_loader:
+                # Transfer to GPU
 
-        for metric in metrics:
-            metric(outputs, target, loss_outputs)
+                image_batch1 = images_batch[0].to(self.device)
+                image_batch2 = images_batch[1].to(self.device)
 
-        if batch_idx % log_interval == 0:
-            message = 'Train: [{}/{} ({:.0f}%)]\tLoss: {:.6f}'.format(
-                batch_idx * len(data[0]), len(train_loader.dataset),
-                100. * batch_idx / len(train_loader), np.mean(losses))
-            for metric in metrics:
-                message += '\t{}: {}'.format(metric.name(), metric.value())
+                emb1 = self.model.forward(image_batch1).cpu().numpy()
+                emb2 = self.model.forward(image_batch2).cpu().numpy()
 
-            print(message)
-            losses = []
+                embeddings1 = np.concatenate((embeddings1, emb1), axis=0)
+                embeddings2 = np.concatenate((embeddings2, emb2), axis=0)
+                issame_array = np.concatenate((issame_array, issame), axis=0)
 
-    total_loss /= (batch_idx + 1)
-    return total_loss, metrics
+        distance_and_is_same = zip(np.sum((embeddings1 - embeddings2)**2, axis=1), issame_array)
+        distance_and_is_same_df = pd.DataFrame(distance_and_is_same)
+        negative_mean_distance = distance_and_is_same_df[distance_and_is_same_df[1] == False][0].mean()
+        positive_mean_distance = distance_and_is_same_df[distance_and_is_same_df[1] == True][0].mean()
 
+        # pos_dist = np.where(issame_array == 1)
+        # print('Positive pairs distance:')
+        # print(dist[0:5])
+        # print('Negative pairs distance:')
+        # print(dist[1100:1105])
+
+        thresholds = np.arange(0, 4, 0.01)
+        nrof_folds = 10
+        distance_metric = 0
+        subtract_mean = False
+
+        tpr, fpr, accuracy, best_threshold = utils.Calculate_Roc(thresholds, embeddings1, embeddings2,
+                                                                   np.asarray(issame_array), nrof_folds=nrof_folds,
+                                                                   distance_metric=distance_metric,
+                                                                   subtract_mean=subtract_mean)
+
+        thresholds = np.arange(0, 4, 0.001)
+        val, val_std, far, threshold_lowfar = utils.Calculate_Val(thresholds, embeddings1, embeddings2,
+                                                                    np.asarray(issame_array), 1e-3,
+                                                                    nrof_folds=nrof_folds,
+                                                                    distance_metric=distance_metric,
+                                                                    subtract_mean=subtract_mean)
+
+        print('Accuracy: %1.3f+-%1.3f' % (np.mean(accuracy), np.std(accuracy)))
+        print('Validation rate: %2.5f+-%2.5f @ FAR=%2.5f' % (val, val_std, far))
+        print('Best threshold: %2.5f' % (best_threshold))
+
+        self.plotter.plot('distance', 'step', 'negative', 'pairwise_mean_distance', self.step, negative_mean_distance)
+        self.plotter.plot('distance', 'step', 'positive', 'pairwise_mean_distance', self.step, positive_mean_distance)
+
+        self.plotter.plot('accuracy', 'step', 'train', 'eval', self.step, np.mean(accuracy))
+        self.plotter.plot('validation rate', 'step', 'eval', 'Validation Rate', self.step, val)
+        self.plotter.plot('best threshold', 'step', 'eval', 'Best Threshold', self.step, best_threshold)
+
+            # return tpr, fpr, accuracy, val, val_std, far, best_threshold, threshold_lowfar, tpr_lowfar, acc_lowfar
+
+# def fit(train_loader: DataLoader,
+#         val_loader: DataLoader,
+#         model: nn.Module,
+#         loss_fn: nn.Module,
+#         optimizer: Optimizer,
+#         scheduler: _LRScheduler,
+#         n_epochs,
+#         cuda,
+#         log_interval,
+#         metrics=[],
+#         start_epoch=0):
+#     """
+#     Loaders, model, loss function and metrics should work together for a given task,
+#     i.e. The model should be able to process data output of loaders,
+#     loss function should process target output of loaders and outputs from the model
+#
+#     Examples: Classification: batch loader, classification model, NLL loss, accuracy metric
+#     Siamese network: Siamese loader, siamese model, contrastive loss
+#     Online triplet learning: batch loader, embedding model, online triplet loss
+#     """
+#     for epoch in range(0, start_epoch):
+#         scheduler.step()
+#
+#     for epoch in range(start_epoch, n_epochs):
+#         scheduler.step()
+#
+#         # Train stage
+#         train_loss, metrics = train_epoch(train_loader, model, loss_fn, optimizer, cuda, log_interval, metrics)
+#
+#         message = 'Epoch: {}/{}. Train set: Average loss: {:.4f}'.format(epoch + 1, n_epochs, train_loss)
+#         for metric in metrics:
+#             message += '\t{}: {}'.format(metric.name(), metric.value())
+#
+#         # val_loss, metrics = test_epoch(val_loader, model, loss_fn, cuda, metrics)
+#         # val_loss /= len(val_loader)
+#         #
+#         # message += '\nEpoch: {}/{}. Validation set: Average loss: {:.4f}'.format(epoch + 1, n_epochs,
+#         #                                                                          val_loss)
+#         # for metric in metrics:
+#         #     message += '\t{}: {}'.format(metric.name(), metric.value())
+#
+#         print(message)
+
+# def train_epoch(train_loader: DataLoader,
+#                 model: nn.Module,
+#                 loss_fn: nn.Module,
+#                 optimizer: Optimizer,
+#                 device,
+#                 log_interval,
+#                 metrics):
+#
+#     for metric in metrics:
+#         metric.reset()
+#
+#     model.train()
+#     losses = []
+#     total_loss = 0
+#
+#     batch_idx = 0
+#     for local_batch, local_labels in train_loader:
+#         # Transfer to GPU
+#         local_batch, local_labels = local_batch.to(device), local_labels.to(device)
+#
+#         optimizer.zero_grad()
+#
+#         embedddings = model.forward(local_batch)
+#         loss, num_triplets = loss_fn(embedddings, local_labels)
+#
+#         losses.append(loss)
+#         total_loss += loss
+#         loss.backward()
+#         optimizer.step()
+#
+#         for metric in metrics:
+#             metric(embedddings, local_labels, loss)
+#
+#
+#         if batch_idx % log_interval == 0:
+#             message = 'Train: [{}/{} ({:.0f}%)]\tLoss: {:.6f}'.format(
+#                 batch_idx * len(embedddings), len(train_loader.dataset),
+#                 100. * batch_idx / len(train_loader), torch.mean(torch.stack(losses)))
+#             for metric in metrics:
+#                 message += '\t{}: {}'.format(metric.name(), metric.value())
+#
+#             print(message)
+#             losses = []
+#
+#         batch_idx += 1
+#
+#     total_loss /= (batch_idx + 1)
+#     return total_loss, metrics
 
 def test_epoch(val_loader, model, loss_fn, cuda, metrics):
     with torch.no_grad():
