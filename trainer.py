@@ -1,6 +1,6 @@
 import torch
 import numpy as np
-
+import tqdm
 from torch import nn
 import torch.nn.functional as F
 from torch.nn.modules.loss import _Loss
@@ -9,6 +9,10 @@ from torch.optim.lr_scheduler import _LRScheduler
 from torch.utils.data import DataLoader
 import pandas as pd
 import utils
+
+def get_lr(optimizer):
+    for param_group in optimizer.param_groups:
+        return param_group['lr']
 
 class Triplet_Trainer(object):
     def __init__(self,
@@ -20,7 +24,8 @@ class Triplet_Trainer(object):
                  device,
                  plotter: utils.VisdomLinePlotter,
                  margin: int,
-                 embedding_size: int):
+                 embedding_size: int,
+                 log_interval: int=1):
 
         self.model = model
         self.miner = miner
@@ -31,6 +36,7 @@ class Triplet_Trainer(object):
         self.embedding_size = embedding_size
 
         self.device = device
+        self.log_interval = log_interval
 
         self.step = 0
         # self.loss_function = utils.TripletLoss(self.margin)
@@ -40,10 +46,20 @@ class Triplet_Trainer(object):
                     train_loader: DataLoader):
 
         self.model.train()
+        train_losses = utils.AverageMeter()
+        train_ap_distances = utils.AverageMeter()
+        train_an_distances = utils.AverageMeter()
+        train_triplets = utils.AverageMeter()
 
         # Training
         self.scheduler.step()
-        for local_batch, local_labels in train_loader:
+        lr = get_lr(self.optimizer)
+        self.plotter.plot('learning rate', 'step', 'train', 'Learning Rate',
+                          self.step, lr)
+
+        loader_length = len(train_loader)
+        tbar = tqdm.tqdm(train_loader, dynamic_ncols=True)
+        for i, (local_batch, local_labels) in enumerate(tbar):
             # Transfer to GPU
             local_batch = local_batch.to(self.device)
             embeddings = self.model.forward(local_batch)
@@ -60,36 +76,56 @@ class Triplet_Trainer(object):
             loss.backward()
             self.optimizer.step()
 
-            print('Loss {:.4f}'.format(loss.item()))
+            tbar.set_description('Step {} - Loss: {:.4f}'.format(self.step, loss.item()))
 
-            self.plotter.plot('loss', 'step', 'train', 'Triplet Loss', self.step, loss.item())
-            self.plotter.plot('triplet number', 'step', 'train', 'Triplet Mining', self.step, triplets.size(0))
+            ap_distances = torch.norm(embeddings[triplets[:, 0]] - embeddings[triplets[:, 1]], p=2, dim=1)
+            an_distances = torch.norm(embeddings[triplets[:, 0]] - embeddings[triplets[:, 2]], p=2, dim=1)
+
+            train_losses.append(loss.item())
+            train_ap_distances.append(ap_distances.mean().item())
+            train_an_distances.append(an_distances.mean().item())
+            train_triplets.append(triplets.size(0))
+
+            if not (i + 1) % self.log_interval or (i + 1) == loader_length:
+                self.plotter.plot('distance', 'step', 'vggface2_an', 'Pairwise mean distance',
+                                  self.step, train_an_distances.last_avg)
+                self.plotter.plot('distance', 'step', 'vggface2_ap', 'Pairwise mean distance',
+                                  self.step, train_ap_distances.last_avg)
+                self.plotter.plot('loss', 'step', 'train', 'Triplet Loss', self.step, train_losses.last_avg)
+                self.plotter.plot('triplet number', 'step', 'train', 'Triplet Mining',
+                                  self.step, train_triplets.last_avg)
 
             self.step += 1
+        tbar.set_description('Step {} - Loss: {:.4f}'.format(self.step, train_losses.avg))
 
     def Evaluate(self,
                  test_loader: DataLoader,
                  name='validation'):
 
-        embeddings1 = np.empty((0, self.embedding_size))
-        embeddings2 = np.empty((0, self.embedding_size))
-        issame_array = np.empty(0)
+        embeddings1 = []
+        embeddings2 = []
+        issame_array =[]
 
         self.model.eval()
 
         with torch.no_grad():
-            for images_batch, issame, path_batch in test_loader:
+            tbar = tqdm.tqdm(test_loader, dynamic_ncols=True)
+            for images_batch, issame, path_batch in tbar:
                 # Transfer to GPU
 
-                image_batch1 = images_batch[0].to(self.device)
-                image_batch2 = images_batch[1].to(self.device)
+                image_batch1 = images_batch[0].to(self.device, non_blocking=True)
+                image_batch2 = images_batch[1].to(self.device, non_blocking=True)
 
-                emb1 = self.model.forward(image_batch1).cpu().numpy()
-                emb2 = self.model.forward(image_batch2).cpu().numpy()
+                emb1 = self.model.forward(image_batch1)
+                emb2 = self.model.forward(image_batch2)
 
-                embeddings1 = np.concatenate((embeddings1, emb1), axis=0)
-                embeddings2 = np.concatenate((embeddings2, emb2), axis=0)
-                issame_array = np.concatenate((issame_array, issame), axis=0)
+                embeddings1.append(emb1)
+                embeddings2.append(emb2)
+                issame_array.append(issame)
+
+            embeddings1 = torch.cat(embeddings1, 0).cpu().numpy()
+            embeddings2 = torch.cat(embeddings2, 0).cpu().numpy()
+            issame_array = torch.cat(issame_array, 0).cpu().numpy()
 
         distance_and_is_same = zip(np.sum((embeddings1 - embeddings2)**2, axis=1), issame_array)
         distance_and_is_same_df = pd.DataFrame(distance_and_is_same)
@@ -119,12 +155,12 @@ class Triplet_Trainer(object):
                                                                     distance_metric=distance_metric,
                                                                     subtract_mean=subtract_mean)
 
-        print('Accuracy: %1.3f+-%1.3f' % (np.mean(accuracy), np.std(accuracy)))
-        print('Validation rate: %2.5f+-%2.5f @ FAR=%2.5f' % (val, val_std, far))
-        print('Best threshold: %2.5f' % (best_threshold))
+        print('Accuracy: {:.3%}+-{:.3%}'.format(np.mean(accuracy), np.std(accuracy)))
+        print('Validation rate: {:.3%}+-{:.3%} @ FAR={:.3%}'.format(val, val_std, far))
+        print('Best threshold: {:.3f}'.format(best_threshold))
 
-        self.plotter.plot('distance', 'step', 'negative', 'pairwise_mean_distance', self.step, negative_mean_distance)
-        self.plotter.plot('distance', 'step', 'positive', 'pairwise_mean_distance', self.step, positive_mean_distance)
+        self.plotter.plot('distance', 'step', 'lfw_an', 'Pairwise mean distance', self.step, negative_mean_distance)
+        self.plotter.plot('distance', 'step', 'lfw_ap', 'Pairwise mean distance', self.step, positive_mean_distance)
 
         self.plotter.plot('accuracy', 'step', 'train', 'eval', self.step, np.mean(accuracy))
         self.plotter.plot('validation rate', 'step', 'eval', 'Validation Rate', self.step, val)

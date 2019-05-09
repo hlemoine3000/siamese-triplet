@@ -1,0 +1,34 @@
+{
+  "name": "config",
+  "version": "1.0.0",
+
+  "dataset": {
+    "train_dir": "/export/livia/data/lemoineh/vggface2/train_182",
+    "test_name": ["lfw"],
+    "test_dir": ["/export/livia/data/lemoineh/lfw/lfw_mtcnnpy_160"],
+    "pairs_file": ["dataset_utils/pair_files/lfw_pairs.txt"]
+  },
+
+
+  "hyperparameters": {
+    "margin": 0.2,
+    "embedding_size": 128,
+    "n_epochs": 1000,
+    "image_size": 160,
+    "images_per_person": 5,
+    "people_per_batch": 20,
+
+    "optimizer": "ADAM",
+    "learning_rate": 0.05,
+    "learning_rate_decay_epochs": 4,
+    "learning_rate_decay_factor": 0.98,
+    "weight_decay": 2e-4,
+    "moving_average_decay": 0.9999,
+
+    "random_crop": false,
+    "random_flip": false,
+
+    "log_interval": 50
+  }
+
+}

@@ -8,6 +8,7 @@ from torchvision import datasets, transforms
 from torchvision.datasets.folder import default_loader
 from random import sample
 
+
 class ImageFolder_BalancedBatchSampler(BatchSampler):
     r"""Samples elements sequentially, always in the same order.
 
@@ -15,8 +16,8 @@ class ImageFolder_BalancedBatchSampler(BatchSampler):
         data_source (Dataset): dataset to sample from
     """
 
-    def __init__(self, data_source: datasets.ImageFolder, num_classes: int, samples_per_class: int, num_batches: int = None):
-
+    def __init__(self, data_source: datasets.ImageFolder, num_classes: int, samples_per_class: int,
+                 num_batches: int = None):
         self.data_source = data_source
         self.num_classes = num_classes
         self.samples_per_class = samples_per_class
@@ -43,33 +44,89 @@ class ImageFolder_BalancedBatchSampler(BatchSampler):
     def __len__(self):
         return len(self.data_source)
 
+
+class Random_BalancedBatchSampler(BatchSampler):
+    r"""Samples elements sequentially, always in the same order.
+
+    Arguments:
+        data_source (Dataset): dataset to sample from
+    """
+
+    def __init__(self, data_source: datasets.ImageFolder, num_classes_per_batch: int, samples_per_class: int,
+                 max_batches: int=None):
+
+        self.data_source = data_source
+        self.num_classes_per_batch = num_classes_per_batch
+        self.samples_per_class = samples_per_class
+        self.max_batches = max_batches
+
+        if self.num_classes_per_batch > len(self.data_source.classes):
+            raise ValueError('Trying to sample {} classes in a dataset with {} classes.'.format(
+                self.num_classes_per_batch, len(self.data_source.classes)))
+
+        self.num_batches = len(self.data_source.samples) // (self.num_classes_per_batch * self.samples_per_class)
+
+        self.sample_idxs = np.arange(len(self.data_source.samples))
+        self.targets = np.array(self.data_source.targets)
+        self.classes = np.array(list(self.data_source.class_to_idx.values()))
+        self.class_samples = {i: self.sample_idxs[self.targets == i] for i in self.classes}
+
+    def __iter__(self):
+        batches = []
+        for i in range(min(self.num_batches, self.max_batches)):
+            batch = []
+            chosen_classes_idx = np.random.choice(self.classes, self.num_classes_per_batch, replace=False)
+            for i in chosen_classes_idx:
+                batch.append(np.random.choice(self.class_samples[i], self.samples_per_class, replace=False))
+            batches.append(np.concatenate(batch))
+
+        return iter(batches)
+
+    def __len__(self):
+        return min(self.num_batches, self.max_batches)
+
+
 class PairsDataset(Dataset):
     """Face Landmarks dataset."""
 
     def __init__(self,
                  data_source: datasets.ImageFolder,
                  pair_file: str,
-                 transform: transforms):
-
+                 transform: transforms,
+                 preload: bool=False):
         self.data_source = data_source
         self.pair_file = pair_file
         self.transform = transform
 
         self.pairs, self.issame = Get_Pairs(pair_file, data_source)
 
+        self.preloaded = False
+        if preload:
+            self.images = {}
+            uniques = np.unique(np.array(self.pairs))
+            for path in uniques:
+                img = Image.open(path)
+                self.images[path] = img.copy()
+            self.preloaded = True
+
+
     def __len__(self):
         return len(self.issame)
 
     def __getitem__(self, idx):
-
-        img1 = default_loader(self.pairs[idx][0])
-        img2 = default_loader(self.pairs[idx][1])
+        if self.preloaded:
+            img1 = self.images[self.pairs[idx][0]]
+            img2 = self.images[self.pairs[idx][1]]
+        else:
+            img1 = default_loader(self.pairs[idx][0])
+            img2 = default_loader(self.pairs[idx][1])
 
         if self.transform:
             img1 = self.transform(img1)
             img2 = self.transform(img2)
 
         return [img1, img2], self.issame[idx], [self.pairs[idx][0], self.pairs[idx][1]]
+
 
 class BalancedBatchSampler(BatchSampler):
     """
@@ -110,15 +167,17 @@ class BalancedBatchSampler(BatchSampler):
     def __len__(self):
         return self.n_dataset // self.batch_size
 
+
 def add_extension(path):
-    if os.path.exists(path+'.jpg'):
-        return path+'.jpg'
-    if os.path.exists(path+'.JPG'):
-        return path+'.JPG'
-    elif os.path.exists(path+'.png'):
-        return path+'.png'
+    if os.path.exists(path + '.jpg'):
+        return path + '.jpg'
+    if os.path.exists(path + '.JPG'):
+        return path + '.JPG'
+    elif os.path.exists(path + '.png'):
+        return path + '.png'
     else:
         raise RuntimeError('No file "%s" with extension png or jpg.' % path)
+
 
 def read_pairs(pairs_filename):
     pairs = []
@@ -128,10 +187,10 @@ def read_pairs(pairs_filename):
             pairs.append(pair)
     return np.array(pairs)
 
+
 # Set up for evaluation
 def Get_Pairs(pairs_path,
               images_path):
-
     nrof_skipped_pairs = 0
     path_list = []
     issame_list = []
