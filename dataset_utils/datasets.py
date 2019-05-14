@@ -203,12 +203,12 @@ def Get_Pairs(pairs_path,
 
     for pair in pairs:
         if len(pair) == 3:
-            path0 = add_extension(os.path.join(images_path, pair[0], pair[0] + '_' + '%04d' % int(pair[1])))
-            path1 = add_extension(os.path.join(images_path, pair[0], pair[0] + '_' + '%04d' % int(pair[2])))
+            path0 = add_extension(os.path.join(images_path, pair[0], pair[1]))
+            path1 = add_extension(os.path.join(images_path, pair[0], pair[2]))
             issame = True
         elif len(pair) == 4:
-            path0 = add_extension(os.path.join(images_path, pair[0], pair[0] + '_' + '%04d' % int(pair[1])))
-            path1 = add_extension(os.path.join(images_path, pair[2], pair[2] + '_' + '%04d' % int(pair[3])))
+            path0 = add_extension(os.path.join(images_path, pair[0], pair[1]))
+            path1 = add_extension(os.path.join(images_path, pair[2], pair[3]))
             issame = False
         if os.path.exists(path0) and os.path.exists(path1):  # Only add the pair if both paths exist
             path_list.append([path0, path1])

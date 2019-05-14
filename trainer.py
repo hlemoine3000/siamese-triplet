@@ -1,3 +1,5 @@
+from copy import deepcopy
+
 import torch
 import numpy as np
 import tqdm
@@ -121,7 +123,7 @@ class Triplet_Trainer(object):
 
                 embeddings1.append(emb1)
                 embeddings2.append(emb2)
-                issame_array.append(issame)
+                issame_array.append(deepcopy(issame))
 
             embeddings1 = torch.cat(embeddings1, 0).cpu().numpy()
             embeddings2 = torch.cat(embeddings2, 0).cpu().numpy()
@@ -159,12 +161,12 @@ class Triplet_Trainer(object):
         print('Validation rate: {:.3%}+-{:.3%} @ FAR={:.3%}'.format(val, val_std, far))
         print('Best threshold: {:.3f}'.format(best_threshold))
 
-        self.plotter.plot('distance', 'step', 'lfw_an', 'Pairwise mean distance', self.step, negative_mean_distance)
-        self.plotter.plot('distance', 'step', 'lfw_ap', 'Pairwise mean distance', self.step, positive_mean_distance)
+        self.plotter.plot('distance', 'step', name + '_an', 'Pairwise mean distance', self.step, negative_mean_distance)
+        self.plotter.plot('distance', 'step', name + '_ap', 'Pairwise mean distance', self.step, positive_mean_distance)
 
-        self.plotter.plot('accuracy', 'step', 'train', 'eval', self.step, np.mean(accuracy))
-        self.plotter.plot('validation rate', 'step', 'eval', 'Validation Rate', self.step, val)
-        self.plotter.plot('best threshold', 'step', 'eval', 'Best Threshold', self.step, best_threshold)
+        self.plotter.plot('accuracy', 'step', name, 'Accuracy', self.step, np.mean(accuracy))
+        self.plotter.plot('validation rate', 'step', name, 'Validation Rate', self.step, val)
+        self.plotter.plot('best threshold', 'step', name, 'Best Threshold', self.step, best_threshold)
 
             # return tpr, fpr, accuracy, val, val_std, far, best_threshold, threshold_lowfar, tpr_lowfar, acc_lowfar
 

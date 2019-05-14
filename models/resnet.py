@@ -1,4 +1,5 @@
 import torch.nn as nn
+import torch.nn.functional as F
 import torch.utils.model_zoo as model_zoo
 
 
@@ -161,7 +162,7 @@ class ResNet(nn.Module):
         x = x.view(x.size(0), -1)
         x = self.last(x)
 
-        return x
+        return F.normalize(x, p=2, dim=1)
 
 
 def resnet18(pretrained=False, **kwargs):

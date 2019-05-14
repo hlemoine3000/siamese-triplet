@@ -1,6 +1,7 @@
 import sys
+import os
 import argparse
-# import configparser
+from datetime import datetime
 import json
 
 import torch
@@ -31,38 +32,26 @@ def main(args):
         config = json.load(json_config_file)
     parameters = config['hyperparameters']
     datasets_path = config['dataset']
-    # config = configparser.ConfigParser()
-    # config.read(args.config)
+    visdom_config = config['visdom']
+    output_config = config['output']
 
-    # Dataset
-    # train_dir = config.get('Dataset', 'train_dir')
-    # test_dir = config.get('Dataset', 'test_dir')
-    # pairs_file = config.get('Dataset', 'pairs_file')
-    #
-    # # Hyperparameters
-    # lr = config.getfloat('Hyper Parameters', 'learning_rate')
-    # weight_decay = config.getfloat('Hyper Parameters', 'weight_decay')
-    # n_epochs = config.getint('Hyper Parameters', 'n_epochs')
-    #
-    # image_size = config.getint('Hyper Parameters', 'image_size')
-    # margin = config.getfloat('Hyper Parameters', 'margin')
-    # people_per_batch = config.getint('Hyper Parameters', 'people_per_batch')
-    # images_per_person = config.getint('Hyper Parameters', 'images_per_person')
-    # embedding_size = config.getint('Hyper Parameters', 'embedding_size')
-    #
-    # log_interval = config.getint('Hyper Parameters', 'log_interval')
+    # Set up output directory
+    subdir = datetime.strftime(datetime.now(), '%Y%m%d-%H%M%S')
+    model_dir = os.path.join(os.path.expanduser(output_config['output_dir']), subdir)
+    if not os.path.isdir(model_dir):  # Create the model directory if it doesn't exist
+        os.makedirs(model_dir)
 
     # CUDA for PyTorch
     use_cuda = torch.cuda.is_available()
     device = torch.device("cuda:0" if use_cuda else "cpu")
 
     data_transform = transforms.Compose([
-        transforms.Resize(parameters['image_size'], interpolation=1),#1
+        transforms.Resize((parameters['image_size'], parameters['image_size']), interpolation=1),
         transforms.ToTensor()
     ])
 
     # Train loader
-    print('TRAIN SET:\t{}'.format(datasets_path['train_dir']))
+    print('TRAIN SET {}:\t{}'.format(datasets_path['train_name'], datasets_path['train_dir']))
     train_set = datasets.ImageFolder(datasets_path['train_dir'], transform=data_transform)
 
     batch_sampler = Random_BalancedBatchSampler(train_set, parameters['people_per_batch'], parameters['images_per_person'], max_batches=1000)
@@ -71,30 +60,23 @@ def main(args):
                                                       batch_sampler=batch_sampler,
                                                       pin_memory=True)
 
-    # Test loader
-    print('TEST SET:\t{}'.format(datasets_path['test_dir'][0]))
-    test_set = PairsDataset(datasets_path['test_dir'][0], datasets_path['pairs_file'][0], transform=data_transform, preload=True)
-    test_loader = torch.utils.data.DataLoader(test_set, num_workers=2, batch_size=(parameters['people_per_batch'] * parameters['images_per_person'])//2)
-
+    test_container = []
+    for i, test_name in enumerate(datasets_path['test_name']):
+        # Test loader
+        print('TEST SET {}:\t{}'.format(test_name, datasets_path['test_dir'][i]))
+        test_set = PairsDataset(datasets_path['test_dir'][i], datasets_path['pairs_file'][i], transform=data_transform, preload=True)
+        test_loader = torch.utils.data.DataLoader(test_set, num_workers=2, batch_size=(parameters['people_per_batch'] * parameters['images_per_person'])//2)
+        test_container.append((test_name, test_loader))
 
     print('Building training model')
     # miner = utils.Triplet_Miner(margin, people_per_batch, images_per_person)
     miner = utils.SemihardNegativeTripletSelector(parameters['margin'])
 
-    m = models.InceptionResNetV2(bottleneck_layer_size=parameters['embedding_size'])
-    # m = models.resnet18(num_classes=embedding_size, pretrained=True)
-    class NormWrapper(nn.Module):
-        def __init__(self, model):
-            super(NormWrapper, self).__init__()
-            self.model = model
-        def forward(self, input):
-            embeddings = self.model(input)
-            norms = embeddings.pow(2).sum(1, keepdim=True).add(1e-8).sqrt()
-            return embeddings / norms
-    model = NormWrapper(model=m)
+    # model = models.InceptionResNetV2(bottleneck_layer_size=parameters['embedding_size'])
+    model = models.resnet18(num_classes=parameters['embedding_size'], pretrained=True)
     model.to(device)
 
-    loss = nn.TripletMarginLoss(margin=parameters['margin'])
+    loss = nn.TripletMarginLoss(margin=parameters['margin'], swap=parameters['triplet_swap'])
     # loss = utils.TripletLoss(margin=margin)
 
     # optimizer = optim.Adam(model.parameters(), lr=lr, weight_decay=2e-4)
@@ -104,7 +86,7 @@ def main(args):
     # scheduler = lr_scheduler.StepLR(optimizer, 5, gamma=0.1)
     scheduler = lr_scheduler.ExponentialLR(optimizer, parameters['learning_rate_decay_factor'])
 
-    plotter = utils.VisdomLinePlotter(env_name='Triplet Loss Plots 2', port=8097)
+    plotter = utils.VisdomLinePlotter(env_name=visdom_config['environment_name'], port=8097)
 
     trainer = Triplet_Trainer(model,
                               miner,
@@ -115,17 +97,22 @@ def main(args):
                               plotter,
                               parameters['margin'],
                               parameters['embedding_size'],
-                              parameters['log_interval'])
+                              visdom_config['log_interval'])
 
     # Loop over epochs
     print('Training Launched.')
     for epoch in range(parameters['n_epochs']):
 
-        print('Epoch {}'.format(epoch))
+        print('Train Epoch {}'.format(epoch))
         trainer.Train_Epoch(online_train_loader)
 
-        print('Evaluation')
-        trainer.Evaluate(test_loader)
+        for test_name, test_loader in test_container:
+            print('Evaluation on {}'.format(test_name))
+            trainer.Evaluate(test_loader, name=test_name)
+
+        if not (epoch + 1) % output_config['save_interval']:
+            print('Save model at {}'.format(model_dir))
+            torch.save(model.state_dict(), os.path.join(model_dir, 'model.pth'))
 
     print('Finish.')
 

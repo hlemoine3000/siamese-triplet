@@ -3,10 +3,16 @@
   "version": "1.0.0",
 
   "dataset": {
+    "train_name": "vggface2",
     "train_dir": "/export/livia/data/lemoineh/vggface2/train_182",
-    "test_name": ["lfw"],
-    "test_dir": ["/export/livia/data/lemoineh/lfw/lfw_mtcnnpy_160"],
-    "pairs_file": ["dataset_utils/pair_files/lfw_pairs.txt"]
+    "test_name": ["lfw", "vggface2_test"],
+    "test_dir": ["/export/livia/data/lemoineh/lfw/lfw_mtcnnpy_160", "/export/livia/data/lemoineh/vggface2/test_182"],
+    "pairs_file": ["dataset_utils/pair_files/new_lfw_pairs.txt", "dataset_utils/pair_files/vggface2_pairs.txt"]
+  },
+
+  "output": {
+    "output_dir": "/export/livia/data/lemoineh/torch_facetripletloss/models",
+    "save_interval": 10
   },
 
 
@@ -18,16 +24,20 @@
     "images_per_person": 5,
     "people_per_batch": 20,
 
-    "optimizer": "ADAM",
+    "optimizer": "SGD",
     "learning_rate": 0.05,
     "learning_rate_decay_epochs": 4,
     "learning_rate_decay_factor": 0.98,
     "weight_decay": 2e-4,
     "moving_average_decay": 0.9999,
 
+    "triplet_swap": true,
     "random_crop": false,
-    "random_flip": false,
+    "random_flip": false
+  },
 
+  "visdom": {
+    "environment_name": "Triplet Loss Plots4",
     "log_interval": 50
   }
 

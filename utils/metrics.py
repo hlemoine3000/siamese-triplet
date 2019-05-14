@@ -27,18 +27,10 @@ from __future__ import absolute_import
 from __future__ import division
 from __future__ import print_function
 
-import os
-import importlib
-from subprocess import Popen, PIPE
 import numpy as np
-from scipy import misc
 from sklearn.model_selection import KFold
-from sklearn import metrics, preprocessing
 from scipy import interpolate
-import random
-import re
 import math
-from six import iteritems
 
 
 def Distance(embeddings1, embeddings2, distance_metric=0):

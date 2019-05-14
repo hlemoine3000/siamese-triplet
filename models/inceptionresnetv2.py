@@ -2,8 +2,7 @@ from __future__ import print_function, division, absolute_import
 import torch
 import torch.nn as nn
 import torch.utils.model_zoo as model_zoo
-import os
-import sys
+import torch.nn.functional as F
 
 pretrained_settings = {
     'inceptionresnetv2': {
@@ -327,6 +326,7 @@ class InceptionResNetV2(nn.Module):
     def forward(self, input):
         x = self.features(input)
         x = self.logits(x)
+        x = F.normalize(x, p=2, dim=1)
         return x
 
 def inceptionresnetv2(bottleneck_layer_size=1000, keep_probability=1.0, pretrained=None):
