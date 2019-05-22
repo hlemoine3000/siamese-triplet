@@ -112,7 +112,7 @@ def main(args):
 
     model = models.load_model(config.model.model_arch,
                               embedding_size=embedding_size,
-                              imgnet_pretrained=config.model.imgnet_pretrained)
+                              imgnet_pretrained=config.model.pretrained_imagenet)
 
     loss = nn.TripletMarginLoss(margin=parameters['margin'], swap=parameters['triplet_swap'])
     # loss = utils.TripletLoss(margin=margin)
