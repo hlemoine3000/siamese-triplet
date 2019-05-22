@@ -1,3 +1,17 @@
+from collections import OrderedDict
+
+class FoldGenerator():
+    def __init__(self, num_fold: int, num_train: int, num_val: int):
+        self.fold_list = list(range(num_fold))
+        self.train_idx = num_train
+        self.val_idx = num_train + num_val
+
+    def get_fold(self):
+        return (self.fold_list[:self.train_idx], self.fold_list[self.train_idx:self.val_idx], self.fold_list[self.val_idx:])
+
+    def permute(self):
+        self.fold_list.append(self.fold_list.pop(0))
+
 class AverageMeter:
     """Computes and stores the average and current value"""
 
@@ -58,3 +72,10 @@ class AttrDict(dict):
             raise AttributeError(item)
 
     __setattr__ = __setitem__
+
+
+def state_dict_to_cpu(state_dict: OrderedDict):
+    new_state = OrderedDict()
+    for k in state_dict.keys():
+        new_state[k] = state_dict[k].cpu()
+    return new_state

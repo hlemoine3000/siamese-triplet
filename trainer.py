@@ -102,7 +102,9 @@ class Triplet_Trainer(object):
 
     def Evaluate(self,
                  test_loader: DataLoader,
-                 name='validation'):
+                 name='validation',
+                 nrof_folds=10,
+                 distance_metric=0):
 
         embeddings1 = []
         embeddings2 = []
@@ -134,15 +136,7 @@ class Triplet_Trainer(object):
         negative_mean_distance = distance_and_is_same_df[distance_and_is_same_df[1] == False][0].mean()
         positive_mean_distance = distance_and_is_same_df[distance_and_is_same_df[1] == True][0].mean()
 
-        # pos_dist = np.where(issame_array == 1)
-        # print('Positive pairs distance:')
-        # print(dist[0:5])
-        # print('Negative pairs distance:')
-        # print(dist[1100:1105])
-
         thresholds = np.arange(0, 4, 0.01)
-        nrof_folds = 10
-        distance_metric = 0
         subtract_mean = False
 
         tpr, fpr, accuracy, best_threshold = utils.Calculate_Roc(thresholds, embeddings1, embeddings2,

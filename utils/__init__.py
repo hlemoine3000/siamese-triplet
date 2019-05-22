@@ -3,7 +3,7 @@ from .triplets_miners import RandomNegativeTripletSelector, Triplet_Miner, Harde
 from .plotter import VisdomLinePlotter
 from .metrics import Calculate_Roc, Calculate_Accuracy, Calculate_Val
 from .loss_function import TripletLoss
-from .utils import AverageMeter, AttrDict
+from .utils import AverageMeter, AttrDict, state_dict_to_cpu, FoldGenerator
 
 __all__ = ['RandomNegativeTripletSelector',
            'Triplet_Miner',

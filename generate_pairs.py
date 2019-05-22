@@ -157,6 +157,7 @@ def generate_pairs(
     matches = []
     mismatches = []
     for fold in people_folds:
+        print(fold)
         matches.append(_make_matches(image_dir,
                                      fold,
                                      num_matches_mismatches))
