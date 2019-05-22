@@ -32,9 +32,9 @@
   },
 
   "model": {
-    "model_arch": "resnet101",
+    "model_arch": "resnet50",
     "pretrained_imagenet": true,
-    "pretrained": false,
+    "checkpoint": false,
     "checkpoint_path": "",
     "embedding_size": 128
   },

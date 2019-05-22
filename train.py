@@ -97,13 +97,22 @@ def main(args):
                                                       pin_memory=True)
 
     print('Building training model')
+
+    if config.model.checkpoint:
+        checkpoint = torch.load(config.model.checkpoint_path)
+
+        embedding_size = checkpoint['embedding_size']
+        start_epoch = checkpoint['epoch']
+    else:
+        embedding_size = 0
+        start_epoch = 0
+
     # miner = utils.Triplet_Miner(margin, people_per_batch, images_per_person)
     miner = utils.SemihardNegativeTripletSelector(parameters['margin'])
 
     model = models.load_model(config.model.model_arch,
-                              embedding_size=config.model.embedding_size,
-                              pretrained=config.model.pretrained)
-    model = model.to(device)
+                              embedding_size=embedding_size,
+                              imgnet_pretrained=config.model.imgnet_pretrained)
 
     loss = nn.TripletMarginLoss(margin=parameters['margin'], swap=parameters['triplet_swap'])
     # loss = utils.TripletLoss(margin=margin)
@@ -115,8 +124,14 @@ def main(args):
     # scheduler = lr_scheduler.StepLR(optimizer, 5, gamma=0.1)
     scheduler = lr_scheduler.ExponentialLR(optimizer, parameters['learning_rate_decay_factor'])
 
+    if config.model.checkpoint:
+        model.load_state_dict(checkpoint['model_state_dict'])
+        optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
+        scheduler.load_state_dict(checkpoint['scheduler_state_dict'])
+
     plotter = utils.VisdomLinePlotter(env_name=config.visdom.environment_name, port=8097)
 
+    model = model.to(device)
     trainer = Triplet_Trainer(model,
                               miner,
                               loss,
@@ -130,7 +145,7 @@ def main(args):
 
     # Loop over epochs
     print('Training Launched.')
-    for epoch in range(parameters['n_epochs']):
+    for epoch in range(start_epoch, parameters['n_epochs']):
 
         print('\nTrain Epoch {}'.format(epoch))
         trainer.Train_Epoch(online_train_loader)
@@ -144,8 +159,13 @@ def main(args):
         if not (epoch + 1) % config.output.save_interval:
             model_file_path = os.path.join(model_dir, 'model_{}.pth'.format(epoch))
             print('\nSave model at {}'.format(model_file_path))
-            state_dict = utils.state_dict_to_cpu(model.state_dict())
-            torch.save(state_dict, model_file_path)
+
+            torch.save({'epoch': epoch,
+                        'model_state_dict': utils.state_dict_to_cpu(model.state_dict()),
+                        'optimizer_state_dict': optimizer.state_dict(),
+                        'scheduler_state_dict': scheduler.state_dict(),
+                        'embedding_size': config.model.embedding_size
+                        }, model_file_path)
 
     print('Finish.')
 
