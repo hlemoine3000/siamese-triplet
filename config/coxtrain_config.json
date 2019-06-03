@@ -10,7 +10,7 @@
 
   "dataset": {
 
-    "dataloader": "base",
+    "dataloader": "coxfinetune",
 
     "train_name": "vggface2",
     "train_dir": "/export/livia/data/lemoineh/vggface2/train_182",
@@ -67,9 +67,9 @@
 
   "model": {
     "model_arch": "resnet50",
-    "pretrained_imagenet": true,
-    "checkpoint": false,
-    "checkpoint_path": "",
+    "pretrained_imagenet": false,
+    "checkpoint": true,
+    "checkpoint_path": "/export/livia/data/lemoineh/torch_facetripletloss/models/20190522-195540/model_159.pth",
     "embedding_size": 128
   },
 
@@ -78,10 +78,10 @@
     "n_epochs": 1000,
     "image_size": 160,
     "images_per_person": 5,
-    "people_per_batch": 40,
+    "people_per_batch": 20,
 
     "optimizer": "SGD",
-    "learning_rate": 0.05,
+    "learning_rate": 0.0005,
     "learning_rate_decay_epochs": 4,
     "learning_rate_decay_factor": 0.98,
     "weight_decay": 2e-4,
@@ -93,8 +93,8 @@
   },
 
   "visdom": {
-    "environment_name": "Triplet Loss Plots8",
-    "log_interval": 50
+    "environment_name": "COX finetune2",
+    "log_interval": 5
   }
 
 }

@@ -14,15 +14,15 @@ from torchvision import transforms, datasets
 
 import dataloaders
 import models
-from trainer import Triplet_Trainer, Quadruplet_Trainer
-import utils
 import losses
+from trainer import Quadruplet_Trainer
+import utils
 
 def parse_arguments(argv):
     parser = argparse.ArgumentParser()
 
     parser.add_argument('--config', type=str,
-                        help='Path to the configuration file', default='config/train_config.json')
+                        help='Path to the configuration file', default='config/da_config.json')
 
     return parser.parse_args(argv)
 
@@ -56,8 +56,7 @@ def main(args):
     ])
 
     # Set up data loaders
-    print('Building training model')
-    online_train_loader, test_container = dataloaders.base_loader(config, data_transform)
+    source_loader, target_loader, test_container = dataloaders.domain_adaptation_loader(config, data_transform)
 
     #Set up training model
     print('Building training model')
@@ -74,11 +73,8 @@ def main(args):
                               embedding_size=embedding_size,
                               imgnet_pretrained=config.model.pretrained_imagenet)
 
-    # optimizer = optim.Adam(model.parameters(), lr=lr, weight_decay=2e-4)
     optimizer = optim.SGD(model.parameters(), lr=parameters['learning_rate'], momentum=0.9, nesterov=True, weight_decay=2e-4)
-    # optimizer = optim.RMSprop(model.parameters(), lr=lr, eps=1.0, weight_decay=weight_decay, momentum=0.9, centered=False)
 
-    # scheduler = lr_scheduler.StepLR(optimizer, 5, gamma=0.1)
     scheduler = lr_scheduler.ExponentialLR(optimizer, parameters['learning_rate_decay_factor'])
 
     if config.model.checkpoint:
@@ -87,28 +83,27 @@ def main(args):
         # scheduler.load_state_dict(checkpoint['scheduler_state_dict'])
 
     model = model.to(device)
-    # optimizer = optimizer
 
     plotter = utils.VisdomLinePlotter(env_name=config.visdom.environment_name, port=8097)
 
-    # miner = utils.Triplet_Miner(margin, people_per_batch, images_per_person)
-    miner = utils.SemihardNegativeTripletSelector(parameters['margin'])
 
-    # loss = nn.TripletMarginLoss(margin=parameters['margin'], swap=parameters['triplet_swap'])
-    # loss = utils.TripletLoss(margin=parameters['margin'])
-    loss = losses.TripletLoss(parameters['margin'])
+    print('Quadruplet loss training mode.')
+    miner = utils.SemihardNegativeQuadrupletSelector(parameters['margin'])
 
+    loss = losses.QuadrupletLoss(parameters['margin'],
+                                 parameters['margin'] * 2,
+                                 lamda=0.1)
 
-    trainer = Triplet_Trainer(model,
-                              miner,
-                              loss,
-                              optimizer,
-                              scheduler,
-                              device,
-                              plotter,
-                              parameters['margin'],
-                              config.model.embedding_size,
-                              config.visdom.log_interval)
+    trainer = Quadruplet_Trainer(model,
+                                 miner,
+                                 loss,
+                                 optimizer,
+                                 scheduler,
+                                 device,
+                                 plotter,
+                                 parameters['margin'],
+                                 config.model.embedding_size,
+                                 config.visdom.log_interval)
 
     # Loop over epochs
     print('Training Launched.')
@@ -121,7 +116,7 @@ def main(args):
 
         # Training
         print('\nTrain Epoch {}'.format(epoch))
-        trainer.Train_Epoch(online_train_loader)
+        trainer.Train_Epoch(source_loader, target_loader)
 
         # Save model
         if not (epoch + 1) % config.output.save_interval:

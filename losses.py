@@ -2,7 +2,6 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-
 class ContrastiveLoss(nn.Module):
     """
     Contrastive loss
@@ -35,6 +34,25 @@ class TripletLoss(nn.Module):
         distance_positive = (anchor - positive).pow(2).sum(1)  # .pow(.5)
         distance_negative = (anchor - negative).pow(2).sum(1)  # .pow(.5)
         losses = F.relu(distance_positive - distance_negative + self.margin)
+        return losses.mean() if size_average else losses.sum()
+
+class QuadrupletLoss(nn.Module):
+    """
+    Triplet loss
+    Takes embeddings of an anchor sample, a positive sample and a negative sample
+    """
+
+    def __init__(self, margin1, margin2, lamda=0.1):
+        super(QuadrupletLoss, self).__init__()
+        self.margin1 = margin1
+        self.margin2 = margin2
+        self.lamda = lamda
+
+    def forward(self, anchor, positive, negative, target, size_average=True):
+        distance_positive = (anchor - positive).pow(2).sum(1)  # .pow(.5)
+        distance_negative = (anchor - negative).pow(2).sum(1)  # .pow(.5)
+        distance_target = (anchor - target).pow(2).sum(1)  # .pow(.5)
+        losses = F.relu(distance_positive - distance_negative - self.lamda * distance_target + self.margin1)
         return losses.mean() if size_average else losses.sum()
 
 

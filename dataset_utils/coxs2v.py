@@ -47,67 +47,74 @@ class cox_data:
 
 
 
-    def get_paths_from_file(self, subject_filename, max_subject=10, max_images_per_subject=10, tag=''):
-        path_list = []
-        label_list = []
+def get_paths_from_file(subject_filename,
+                        still_path,
+                        video_path,
+                        max_subject=10,
+                        max_images_per_subject=10,
+                        tag=''):
+    path_list = []
+    label_list = []
 
-        subjects_list = []
-        with open(subject_filename, 'r') as f:
-            for line in f.readlines()[1:]:
-                subjects_list.append(line.strip())
+    subjects_list = []
+    with open(subject_filename, 'r') as f:
+        for line in f.readlines()[1:]:
+            subjects_list.append(line.strip())
 
-        num_subject = 0
-        for subject in subjects_list:
+    num_subject = 0
+    for subject in subjects_list:
 
-            # Get still image
-            still_image_path = os.path.join(self.cox_still_path, subject + '_0000.JPG')
-            path_list.append(still_image_path)
-            label_list.append(subject + '_still' + tag)
+        # Get still image
+        still_image_path = os.path.join(still_path, subject + '_0000.JPG')
+        path_list.append(still_image_path)
+        label_list.append(subject + '_still' + tag)
 
-            video_subject_dir = os.path.join(self.cox_video_path, subject)
-            subject_images_list = os.listdir(video_subject_dir)
+        video_subject_dir = os.path.join(video_path, subject)
+        subject_images_list = os.listdir(video_subject_dir)
 
-            images_per_subject = 0
-            for subject_image in subject_images_list:
-                path = os.path.join(video_subject_dir, subject_image)
+        images_per_subject = 0
+        for subject_image in subject_images_list:
+            path = os.path.join(video_subject_dir, subject_image)
 
-                if os.path.exists(path):
-                    path_list.append(path)
-                    label_list.append(subject + tag)
-                    images_per_subject += 1
+            if os.path.exists(path):
+                path_list.append(path)
+                label_list.append(subject + tag)
+                images_per_subject += 1
 
-                if images_per_subject >= max_images_per_subject:
-                    break
-
-            num_subject += 1
-            if num_subject >= max_subject:
+            if images_per_subject >= max_images_per_subject:
                 break
 
-        return path_list, label_list
+        num_subject += 1
+        if num_subject >= max_subject:
+            break
 
-    def _extract_fold_list(self, fold_list):
+    return path_list, label_list
 
-        list = []
-        for fold in fold_list:
-            upper_idx = fold * self.nb_subject_per_fold + self.nb_subject_per_fold
-            lower_idx = fold * self.nb_subject_per_fold
-            list += self.subject_list[lower_idx: upper_idx]
+def extract_fold_list(fold_list,
+                       subject_list,
+                       nb_subject_per_fold):
 
-        return list
+    list = []
+    for fold in fold_list:
+        upper_idx = fold * nb_subject_per_fold + nb_subject_per_fold
+        lower_idx = fold * nb_subject_per_fold
+        list += subject_list[lower_idx: upper_idx]
 
-    def _get_subject_list(self):
+    return list
 
-        subject_list = []
+def get_subject_list(pairs_path):
 
-        with open(self.cox_pairs_path, 'r') as f:
+    subject_list = []
 
-            nb_fold = f.readline().split('\t')[0]
+    with open(pairs_path, 'r') as f:
 
-            for line in f.readlines()[1:]:
-                pair = line.strip().split()
+        nb_fold = f.readline().split('\t')[0]
 
-                if len(pair) == 3:
-                    if pair[0] not in subject_list:
-                        subject_list.append(pair[0])
+        for line in f.readlines()[1:]:
+            pair = line.strip().split()
 
-        return subject_list, int(nb_fold)
+            if len(pair) == 3:
+                if pair[0] not in subject_list:
+                    subject_list.append(pair[0])
+
+    return subject_list, int(nb_fold)
