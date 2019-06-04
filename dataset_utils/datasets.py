@@ -2,9 +2,11 @@ import os
 import numpy as np
 
 from PIL import Image
+import torch
 from torch.utils import data
-from torchvision import transforms
+from torchvision import transforms, datasets
 from torchvision.datasets.folder import default_loader
+from dataset_utils import Random_BalancedBatchSampler, Random_S2VBalancedBatchSampler
 
 import utils
 
@@ -218,3 +220,30 @@ class DatasetS2V(data.Dataset):
             sample = self.transform(sample)
 
         return sample, label
+
+
+def Get_ImageFolderLoader(data_dir,
+                 data_transform,
+                 people_per_batch,
+                 images_per_person):
+
+    train_set = datasets.ImageFolder(data_dir, transform=data_transform)
+
+    batch_sampler = Random_BalancedBatchSampler(train_set,
+                                                people_per_batch,
+                                                images_per_person, max_batches=1000)
+
+    return torch.utils.data.DataLoader(train_set,
+                                       num_workers=8,
+                                       batch_sampler=batch_sampler,
+                                       pin_memory=True)
+
+
+def Get_PairsImageFolderLoader(data_dir,
+                               pairs_file,
+                               data_transform,
+                               batch_size):
+
+    test_set = PairsDataset(data_dir, pairs_file, transform=data_transform,
+                            preload=True)
+    return torch.utils.data.DataLoader(test_set, num_workers=2, batch_size=batch_size)

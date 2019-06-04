@@ -133,12 +133,10 @@ def domain_adaptation_loader(config, data_transform):
                                     config.dataset.cross_validation.num_val_folds)
     train_folds, val_folds, test_folds = fold_tool.get_fold()
 
-    # Set up train loader
-    print('TRAIN SET {}'.format('COX-S2V'))
-
     ##########
     # Source #
     ##########
+    print('Source set: {}'.format('COX-S2V video2'))
     source_train_set = DatasetS2V(config.dataset.coxs2v.still_dir,
                                   config.dataset.coxs2v.video2_dir,
                                   config.dataset.coxs2v.video2_pairs,
@@ -157,9 +155,10 @@ def domain_adaptation_loader(config, data_transform):
     ##########
     # Target #
     ##########
+    print('Target set: {}'.format('COX-S2V video4'))
     target_train_set = DatasetS2V(config.dataset.coxs2v.still_dir,
-                                  config.dataset.coxs2v.video2_dir,
-                                  config.dataset.coxs2v.video2_pairs,
+                                  config.dataset.coxs2v.video4_dir,
+                                  config.dataset.coxs2v.video4_pairs,
                                   data_transform,
                                   val_folds,
                                   num_folds=nrof_folds,
@@ -176,6 +175,7 @@ def domain_adaptation_loader(config, data_transform):
     ##########
 
     # Test loader
+    print('Test set: video2')
     test_set = PairsDatasetS2V(config.dataset.coxs2v.still_dir,
                                config.dataset.coxs2v.video2_dir,
                                config.dataset.coxs2v.video2_pairs,
@@ -185,5 +185,24 @@ def domain_adaptation_loader(config, data_transform):
                                preload=True)
     test_loader = torch.utils.data.DataLoader(test_set, num_workers=2, batch_size=test_batch_size)
     test_loader_list.append(('video2_test', test_loader, int(nrof_folds)))
+
+    print('Test set: video4')
+    test_set = PairsDatasetS2V(config.dataset.coxs2v.still_dir,
+                               config.dataset.coxs2v.video4_dir,
+                               config.dataset.coxs2v.video4_pairs,
+                               data_transform,
+                               test_folds,
+                               num_folds=nrof_folds,
+                               preload=True)
+    test_loader = torch.utils.data.DataLoader(test_set, num_workers=2, batch_size=test_batch_size)
+    test_loader_list.append(('video4_test', test_loader, int(nrof_folds)))
+
+    print('Test set: lfw')
+    test_set = PairsDataset(config.dataset.lfw.test_dir,
+                            config.dataset.lfw.pairs_file,
+                            transform=data_transform,
+                            preload=True)
+    test_loader = torch.utils.data.DataLoader(test_set, num_workers=2, batch_size=test_batch_size)
+    test_loader_list.append(('lfw', test_loader, int(nrof_folds)))
 
     return source_train_loader, target_train_loader, test_loader_list

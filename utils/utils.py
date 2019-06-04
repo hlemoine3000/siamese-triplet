@@ -1,6 +1,8 @@
 
 import os
+import numpy as np
 from collections import OrderedDict
+import tqdm
 
 class FoldGenerator():
     def __init__(self, num_fold: int, num_train: int, num_val: int):
@@ -177,7 +179,8 @@ def get_pairs_from_fold(still_source,
             pair = line.strip().split()
             pairs.append(pair)
 
-    for pair in pairs:
+    tbar = tqdm.tqdm(pairs)
+    for pair in tbar:
         if pair[0] in fold_subject_list:
             if len(pair) == 3:
 

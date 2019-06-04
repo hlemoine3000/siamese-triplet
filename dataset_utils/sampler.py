@@ -43,6 +43,8 @@ class Random_BalancedBatchSampler(BatchSampler):
             batch = []
             chosen_classes_idx = np.random.choice(self.classes, self.num_classes_per_batch, replace=False)
             for i in chosen_classes_idx:
+                if len(self.class_samples[i]) < self.samples_per_class:
+                    raise Exception('Number of samples ({}) is not sufficient in class {}. Require {} samples.'.format(len(self.class_samples[i]), i, self.samples_per_class))
                 batch.append(np.random.choice(self.class_samples[i], self.samples_per_class, replace=False))
             batches.append(np.concatenate(batch))
 
@@ -61,7 +63,7 @@ class Random_S2VBalancedBatchSampler(BatchSampler):
     def __init__(self, data_source: dataset_utils.DatasetS2V,
                  num_classes_per_batch: int,
                  samples_per_class: int,
-                 max_batches: int=None):
+                 max_batches: int=10000):
 
         self.data_source = data_source
         self.num_classes_per_batch = num_classes_per_batch

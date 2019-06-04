@@ -29,10 +29,10 @@
       "video3_dir": "/export/livia/data/lemoineh/COX-S2V/COX-S2V-Video-MTCNN160/video3",
       "video4_dir": "/export/livia/data/lemoineh/COX-S2V/COX-S2V-Video-MTCNN160/video4",
 
-      "video1_pairs": "dataset_utils/pair_files/cox_pairs_video1.txt",
-      "video2_pairs": "dataset_utils/pair_files/cox_pairs_video2.txt",
-      "video3_pairs": "dataset_utils/pair_files/cox_pairs_video3.txt",
-      "video4_pairs": "dataset_utils/pair_files/cox_pairs_video4.txt"
+      "video1_pairs": "dataset_utils/pair_files/coxs2v/video1_pairs.txt",
+      "video2_pairs": "dataset_utils/pair_files/coxs2v/video2_pairs.txt",
+      "video3_pairs": "dataset_utils/pair_files/coxs2v/video3_pairs.txt",
+      "video4_pairs": "dataset_utils/pair_files/coxs2v/video4_pairs.txt"
     },
 
     "cross_validation": {
@@ -51,7 +51,7 @@
     "model_arch": "resnet50",
     "pretrained_imagenet": false,
     "checkpoint": true,
-    "checkpoint_path": "/export/livia/data/lemoineh/torch_facetripletloss/models/20190522-195540/model_159.pth",
+    "checkpoint_path": "/export/livia/data/lemoineh/torch_facetripletloss/models/TripletLossPlots6/model_199.pth",
     "embedding_size": 128
   },
 
@@ -69,13 +69,15 @@
     "weight_decay": 2e-4,
     "moving_average_decay": 0.9999,
 
+    "val_far": 1e-2,
+
     "triplet_swap": true,
     "random_crop": false,
     "random_flip": false
   },
 
   "visdom": {
-    "environment_name": "Quadruplet Loss Plots1",
+    "environment_name": "Quadruplet Loss Plots3",
     "log_interval": 5
   }
 

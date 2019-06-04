@@ -36,7 +36,7 @@ class TripletLoss(nn.Module):
         losses = F.relu(distance_positive - distance_negative + self.margin)
         return losses.mean() if size_average else losses.sum()
 
-class QuadrupletLoss(nn.Module):
+class QuadrupletLoss_bad(nn.Module):
     """
     Triplet loss
     Takes embeddings of an anchor sample, a positive sample and a negative sample
@@ -54,6 +54,33 @@ class QuadrupletLoss(nn.Module):
         distance_target = (anchor - target).pow(2).sum(1)  # .pow(.5)
         losses = F.relu(distance_positive - distance_negative - self.lamda * distance_target + self.margin1)
         return losses.mean() if size_average else losses.sum()
+
+class QuadrupletLoss(nn.Module):
+    """
+    Triplet loss
+    Takes embeddings of an anchor sample, a positive sample and a negative sample
+    """
+
+    def __init__(self, margin1, margin2, lamda=0.1):
+        super(QuadrupletLoss, self).__init__()
+        self.margin1 = margin1
+        self.margin2 = margin2
+        self.lamda = lamda
+
+    def forward(self, anchor, positive, negative, target, size_average=True):
+        distance_positive = (anchor - positive).pow(2).sum(1)  # .pow(.5)
+        distance_negative = (anchor - negative).pow(2).sum(1)  # .pow(.5)
+        distance_target = (anchor - target).pow(2).sum(1)  # .pow(.5)
+
+        triplet_losses = F.relu(distance_positive - distance_negative + self.margin1)
+        target_losses = F.relu(distance_positive - distance_target + self.margin2)
+
+        if size_average:
+            quadruplet_loss = triplet_losses.mean() + self.lamda * target_losses.mean()
+        else:
+            quadruplet_loss = triplet_losses.sum() + self.lamda * target_losses.sum()
+
+        return quadruplet_loss
 
 
 class OnlineContrastiveLoss(nn.Module):

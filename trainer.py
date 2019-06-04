@@ -11,6 +11,7 @@ from torch.optim.lr_scheduler import _LRScheduler
 from torch.utils.data import DataLoader
 import pandas as pd
 import utils
+from evaluation import Evaluate
 
 def get_lr(optimizer):
     for param_group in optimizer.param_groups:
@@ -103,63 +104,19 @@ class Triplet_Trainer(object):
                  test_loader: DataLoader,
                  name='validation',
                  nrof_folds=10,
-                 distance_metric=0):
+                 distance_metric=0,
+                 val_far=1e-3):
 
-        embeddings1 = []
-        embeddings2 = []
-        issame_array =[]
+        return Evaluate(test_loader,
+                        self.model,
+                        self.device,
+                        self.step,
+                        plotter=self.plotter,
+                        name=name,
+                        nrof_folds=nrof_folds,
+                        distance_metric=distance_metric,
+                        val_far=val_far)
 
-        self.model.eval()
-
-        with torch.no_grad():
-            tbar = tqdm.tqdm(test_loader, dynamic_ncols=True)
-            for images_batch, issame, path_batch in tbar:
-                # Transfer to GPU
-
-                image_batch1 = images_batch[0].to(self.device, non_blocking=True)
-                image_batch2 = images_batch[1].to(self.device, non_blocking=True)
-
-                emb1 = self.model.forward(image_batch1)
-                emb2 = self.model.forward(image_batch2)
-
-                embeddings1.append(emb1)
-                embeddings2.append(emb2)
-                issame_array.append(deepcopy(issame))
-
-            embeddings1 = torch.cat(embeddings1, 0).cpu().numpy()
-            embeddings2 = torch.cat(embeddings2, 0).cpu().numpy()
-            issame_array = torch.cat(issame_array, 0).cpu().numpy()
-
-        distance_and_is_same = zip(np.sum((embeddings1 - embeddings2)**2, axis=1), issame_array)
-        distance_and_is_same_df = pd.DataFrame(distance_and_is_same)
-        negative_mean_distance = distance_and_is_same_df[distance_and_is_same_df[1] == False][0].mean()
-        positive_mean_distance = distance_and_is_same_df[distance_and_is_same_df[1] == True][0].mean()
-
-        thresholds = np.arange(0, 4, 0.01)
-        subtract_mean = False
-
-        tpr, fpr, accuracy, best_threshold = utils.Calculate_Roc(thresholds, embeddings1, embeddings2,
-                                                                   np.asarray(issame_array), nrof_folds=nrof_folds,
-                                                                   distance_metric=distance_metric,
-                                                                   subtract_mean=subtract_mean)
-
-        thresholds = np.arange(0, 4, 0.001)
-        val, val_std, far, threshold_lowfar = utils.Calculate_Val(thresholds, embeddings1, embeddings2,
-                                                                    np.asarray(issame_array), 1e-3,
-                                                                    nrof_folds=nrof_folds,
-                                                                    distance_metric=distance_metric,
-                                                                    subtract_mean=subtract_mean)
-
-        print('Accuracy: {:.3%}+-{:.3%}'.format(np.mean(accuracy), np.std(accuracy)))
-        print('Validation rate: {:.3%}+-{:.3%} @ FAR={:.3%}'.format(val, val_std, far))
-        print('Best threshold: {:.3f}'.format(best_threshold))
-
-        self.plotter.plot('distance', 'step', name + '_an', 'Pairwise mean distance', self.step, negative_mean_distance)
-        self.plotter.plot('distance', 'step', name + '_ap', 'Pairwise mean distance', self.step, positive_mean_distance)
-
-        self.plotter.plot('accuracy', 'step', name, 'Accuracy', self.step, np.mean(accuracy))
-        self.plotter.plot('validation rate', 'step', name, 'Validation Rate', self.step, val)
-        self.plotter.plot('best threshold', 'step', name, 'Best Threshold', self.step, best_threshold)
 
 class Quadruplet_Trainer(object):
     def __init__(self,
@@ -207,7 +164,7 @@ class Quadruplet_Trainer(object):
 
         loader_length = len(source_loader)
         data_loader = zip(source_loader, target_loader)
-        tbar = tqdm.tqdm(data_loader, dynamic_ncols=True)
+        tbar = tqdm.tqdm(data_loader)
         for i, ((source_batch, source_labels), (target_batch, target_labels)) in enumerate(tbar):
 
             # Forward on source
@@ -260,60 +217,15 @@ class Quadruplet_Trainer(object):
                  test_loader: DataLoader,
                  name='validation',
                  nrof_folds=10,
-                 distance_metric=0):
+                 distance_metric=0,
+                 val_far=1e-3):
 
-        embeddings1 = []
-        embeddings2 = []
-        issame_array =[]
-
-        self.model.eval()
-
-        with torch.no_grad():
-            tbar = tqdm.tqdm(test_loader, dynamic_ncols=True)
-            for images_batch, issame, path_batch in tbar:
-                # Transfer to GPU
-
-                image_batch1 = images_batch[0].to(self.device, non_blocking=True)
-                image_batch2 = images_batch[1].to(self.device, non_blocking=True)
-
-                emb1 = self.model.forward(image_batch1)
-                emb2 = self.model.forward(image_batch2)
-
-                embeddings1.append(emb1)
-                embeddings2.append(emb2)
-                issame_array.append(deepcopy(issame))
-
-            embeddings1 = torch.cat(embeddings1, 0).cpu().numpy()
-            embeddings2 = torch.cat(embeddings2, 0).cpu().numpy()
-            issame_array = torch.cat(issame_array, 0).cpu().numpy()
-
-        distance_and_is_same = zip(np.sum((embeddings1 - embeddings2)**2, axis=1), issame_array)
-        distance_and_is_same_df = pd.DataFrame(distance_and_is_same)
-        negative_mean_distance = distance_and_is_same_df[distance_and_is_same_df[1] == False][0].mean()
-        positive_mean_distance = distance_and_is_same_df[distance_and_is_same_df[1] == True][0].mean()
-
-        thresholds = np.arange(0, 4, 0.01)
-        subtract_mean = False
-
-        tpr, fpr, accuracy, best_threshold = utils.Calculate_Roc(thresholds, embeddings1, embeddings2,
-                                                                   np.asarray(issame_array), nrof_folds=nrof_folds,
-                                                                   distance_metric=distance_metric,
-                                                                   subtract_mean=subtract_mean)
-
-        thresholds = np.arange(0, 4, 0.001)
-        val, val_std, far, threshold_lowfar = utils.Calculate_Val(thresholds, embeddings1, embeddings2,
-                                                                    np.asarray(issame_array), 1e-3,
-                                                                    nrof_folds=nrof_folds,
-                                                                    distance_metric=distance_metric,
-                                                                    subtract_mean=subtract_mean)
-
-        print('Accuracy: {:.3%}+-{:.3%}'.format(np.mean(accuracy), np.std(accuracy)))
-        print('Validation rate: {:.3%}+-{:.3%} @ FAR={:.3%}'.format(val, val_std, far))
-        print('Best threshold: {:.3f}'.format(best_threshold))
-
-        self.plotter.plot('distance', 'step', name + '_an', 'Pairwise mean distance', self.step, negative_mean_distance)
-        self.plotter.plot('distance', 'step', name + '_ap', 'Pairwise mean distance', self.step, positive_mean_distance)
-
-        self.plotter.plot('accuracy', 'step', name, 'Accuracy', self.step, np.mean(accuracy))
-        self.plotter.plot('validation rate', 'step', name, 'Validation Rate', self.step, val)
-        self.plotter.plot('best threshold', 'step', name, 'Best Threshold', self.step, best_threshold)
+        return Evaluate(test_loader,
+                        self.model,
+                        self.device,
+                        self.step,
+                        plotter=self.plotter,
+                        name=name,
+                        nrof_folds=nrof_folds,
+                        distance_metric=distance_metric,
+                        val_far=val_far)

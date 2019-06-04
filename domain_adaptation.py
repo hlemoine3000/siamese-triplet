@@ -64,7 +64,8 @@ def main(args):
         print('Loading from checkpoint {}'.format(config.model.checkpoint_path))
         checkpoint = torch.load(config.model.checkpoint_path)
         embedding_size = checkpoint['embedding_size']
-        start_epoch = checkpoint['epoch']
+        # start_epoch = checkpoint['epoch']
+        start_epoch = 0
     else:
         embedding_size = config.model.embedding_size
         start_epoch = 0
@@ -86,12 +87,11 @@ def main(args):
 
     plotter = utils.VisdomLinePlotter(env_name=config.visdom.environment_name, port=8097)
 
-
     print('Quadruplet loss training mode.')
     miner = utils.SemihardNegativeQuadrupletSelector(parameters['margin'])
 
     loss = losses.QuadrupletLoss(parameters['margin'],
-                                 parameters['margin'] * 2,
+                                 parameters['margin'] * 1.1,
                                  lamda=0.1)
 
     trainer = Quadruplet_Trainer(model,
@@ -112,7 +112,10 @@ def main(args):
         # Validation
         for test_name, test_loader, nrof_folds in test_container:
             print('\nEvaluation on {}'.format(test_name))
-            trainer.Evaluate(test_loader, name=test_name, nrof_folds=nrof_folds)
+            trainer.Evaluate(test_loader,
+                             name=test_name,
+                             nrof_folds=nrof_folds,
+                             val_far=config.hyperparameters.val_far)
 
         # Training
         print('\nTrain Epoch {}'.format(epoch))

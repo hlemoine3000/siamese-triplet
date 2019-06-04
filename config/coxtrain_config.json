@@ -47,10 +47,10 @@
       "video3_dir": "/export/livia/data/lemoineh/COX-S2V/COX-S2V-Video-MTCNN160/video3",
       "video4_dir": "/export/livia/data/lemoineh/COX-S2V/COX-S2V-Video-MTCNN160/video4",
 
-      "video1_pairs": "dataset_utils/pair_files/cox_pairs_video1.txt",
-      "video2_pairs": "dataset_utils/pair_files/cox_pairs_video2.txt",
-      "video3_pairs": "dataset_utils/pair_files/cox_pairs_video3.txt",
-      "video4_pairs": "dataset_utils/pair_files/cox_pairs_video4.txt"
+      "video1_pairs": "dataset_utils/pair_files/coxs2v/video1_pairs.txt",
+      "video2_pairs": "dataset_utils/pair_files/coxs2v/video2_pairs.txt",
+      "video3_pairs": "dataset_utils/pair_files/coxs2v/video3_pairs.txt",
+      "video4_pairs": "dataset_utils/pair_files/coxs2v/video4_pairs.txt"
     },
 
     "cross_validation": {
