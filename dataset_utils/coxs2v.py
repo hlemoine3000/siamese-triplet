@@ -33,14 +33,16 @@ def get_coxs2v_trainset(still_dir,
                                        batch_sampler=batch_sampler,
                                        pin_memory=True)
 
-
 def get_coxs2v_testset(still_dir,
-                          video_dir,
-                          pairs_file,
-                          folds,
-                          nrof_folds,
-                          data_transform,
-                          batch_size):
+                       video_dir,
+                       pairs_file,
+                       folds,
+                       nrof_folds,
+                       data_transform,
+                       batch_size,
+                       preload=False):
+
+    num_workers = 2 if preload else 4
 
 
     print('TEST SET COXS2V:\t{}'.format(video_dir))
@@ -50,5 +52,5 @@ def get_coxs2v_testset(still_dir,
                                data_transform,
                                folds,
                                num_folds=nrof_folds,
-                               preload=True)
-    return torch.utils.data.DataLoader(test_set, num_workers=2, batch_size=batch_size)
+                               preload=preload)
+    return torch.utils.data.DataLoader(test_set, num_workers=num_workers, batch_size=batch_size)

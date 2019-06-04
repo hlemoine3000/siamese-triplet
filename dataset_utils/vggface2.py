@@ -15,15 +15,16 @@ def get_vggface2_trainset(train_dir,
                                  people_per_batch,
                                  images_per_person)
 
-
 def get_vggface2_testset(test_dir,
-                 pairs_file,
-                 data_transform,
-                 batch_size):
+                         pairs_file,
+                         data_transform,
+                         batch_size,
+                         preload=False):
 
 
     print('TEST SET vggface2:\t{}'.format(test_dir))
     return Get_PairsImageFolderLoader(test_dir,
                                       pairs_file,
                                       data_transform,
-                                      batch_size)
+                                      batch_size,
+                                      preload=preload)

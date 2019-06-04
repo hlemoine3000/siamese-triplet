@@ -242,13 +242,15 @@ def Get_Pairs(pairs_path,
     path_list = []
     issame_list = []
 
+    print('Reading pairs at {}'.format(pairs_path))
     pairs = read_pairs(pairs_path)
 
     path0 = ''
     path1 = ''
     issame = False
 
-    for pair in pairs:
+    tbar = tqdm.tqdm(pairs)
+    for pair in tbar:
         if len(pair) == 3:
             path0 = add_extension(os.path.join(images_path, pair[0], pair[1]))
             path1 = add_extension(os.path.join(images_path, pair[0], pair[2]))

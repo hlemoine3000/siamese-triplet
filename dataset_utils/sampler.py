@@ -60,7 +60,7 @@ class Random_S2VBalancedBatchSampler(BatchSampler):
         data_source (Dataset): dataset to sample from
     """
 
-    def __init__(self, data_source: dataset_utils.DatasetS2V,
+    def __init__(self, data_source,
                  num_classes_per_batch: int,
                  samples_per_class: int,
                  max_batches: int=10000):

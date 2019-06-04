@@ -1,12 +1,15 @@
+
 import os
 import numpy as np
+import tqdm
 
 from PIL import Image
 import torch
 from torch.utils import data
 from torchvision import transforms, datasets
 from torchvision.datasets.folder import default_loader
-from dataset_utils import Random_BalancedBatchSampler, Random_S2VBalancedBatchSampler
+
+from .sampler import Random_BalancedBatchSampler
 
 import utils
 
@@ -26,9 +29,11 @@ class PairsDataset(data.Dataset):
 
         self.preloaded = False
         if preload:
+            print('Preload images')
             self.images = {}
             uniques = np.unique(np.array(self.pairs))
-            for path in uniques:
+            tbar = tqdm.tqdm(uniques)
+            for path in tbar:
                 img = Image.open(path)
                 self.images[path] = img.copy()
             self.preloaded = True
@@ -242,8 +247,11 @@ def Get_ImageFolderLoader(data_dir,
 def Get_PairsImageFolderLoader(data_dir,
                                pairs_file,
                                data_transform,
-                               batch_size):
+                               batch_size,
+                               preload=False):
+
+    num_workers = 2 if preload else 4
 
     test_set = PairsDataset(data_dir, pairs_file, transform=data_transform,
-                            preload=True)
-    return torch.utils.data.DataLoader(test_set, num_workers=2, batch_size=batch_size)
+                            preload=preload)
+    return torch.utils.data.DataLoader(test_set, num_workers=num_workers, batch_size=batch_size)
