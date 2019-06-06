@@ -150,7 +150,12 @@ class Quadruplet_Trainer(object):
                     target_loader: DataLoader):
 
         self.model.train()
+
+        log_loss_dict = {}
         train_losses = utils.AverageMeter()
+        for loss_key in self.loss.loss_keys:
+            log_loss_dict[loss_key] = utils.AverageMeter()
+
         train_ap_distances = utils.AverageMeter()
         train_an_distances = utils.AverageMeter()
         train_at_distances = utils.AverageMeter()
@@ -182,7 +187,7 @@ class Quadruplet_Trainer(object):
             n = source_embeddings[quadruplets[:, 2]]
             tgt = target_embeddings[quadruplets[:, 3]]
 
-            loss = self.loss(a, p, n, tgt)
+            loss, losses_dict = self.loss(a, p, n, tgt)
             self.optimizer.zero_grad()
             loss.backward()
             self.optimizer.step()
@@ -194,19 +199,26 @@ class Quadruplet_Trainer(object):
             at_distances = torch.norm(source_embeddings[quadruplets[:, 0]] - target_embeddings[quadruplets[:, 3]], p=2, dim=1)
 
             train_losses.append(loss.item())
+            for loss_key in self.loss.loss_keys:
+                log_loss_dict[loss_key].append(losses_dict[loss_key].item())
+
             train_ap_distances.append(ap_distances.mean().item())
             train_an_distances.append(an_distances.mean().item())
             train_at_distances.append(at_distances.mean().item())
             train_quadruplets.append(quadruplets.size(0))
 
             if not (i + 1) % self.log_interval or (i + 1) == loader_length:
+
+                self.plotter.plot('loss', 'step', 'train', 'Loss', self.step, train_losses.last_avg)
+                for loss_key in self.loss.loss_keys:
+                    self.plotter.plot('loss', 'step', loss_key, 'Loss', self.step, log_loss_dict[loss_key].last_avg)
+
                 self.plotter.plot('distance', 'step', 'an', 'Pairwise mean distance',
                                   self.step, train_an_distances.last_avg)
                 self.plotter.plot('distance', 'step', 'ap', 'Pairwise mean distance',
                                   self.step, train_ap_distances.last_avg)
                 self.plotter.plot('distance', 'step', 'at', 'Pairwise mean distance',
                                   self.step, train_at_distances.last_avg)
-                self.plotter.plot('loss', 'step', 'train', 'Triplet Loss', self.step, train_losses.last_avg)
                 self.plotter.plot('triplet number', 'step', 'train', 'Triplet Mining',
                                   self.step, train_quadruplets.last_avg)
 

@@ -10,80 +10,18 @@ import torch
 from torch.utils.data import DataLoader
 from torchvision import transforms, datasets
 
-from copy import deepcopy
+from sklearn.manifold import TSNE
+
 import utils
 import models
 from dataset_utils.dataloaders import Get_TestDataloaders
 
 
-def Evaluate(test_loader: DataLoader,
-             model,
-             device,
-             step,
-             plotter=None,
-             name='validation',
-             nrof_folds=10,
-             distance_metric=0,
-             val_far=1e-3,
-             plot_distances=False):
-    embeddings1 = []
-    embeddings2 = []
-    issame_array = []
+def vis_embeddings():
+    X = np.array([[0, 0, 0], [0, 1, 1], [1, 0, 1], [1, 1, 1]])
+    X_embedded = TSNE(n_components=2).fit_transform(X)
+    X_embedded.shape
 
-    model.eval()
-
-    with torch.no_grad():
-        tbar = tqdm.tqdm(test_loader, dynamic_ncols=True)
-        for images_batch, issame in tbar:
-            # Transfer to GPU
-
-            image_batch1 = images_batch[0].to(device, non_blocking=True)
-            image_batch2 = images_batch[1].to(device, non_blocking=True)
-
-            emb1 = model.forward(image_batch1)
-            emb2 = model.forward(image_batch2)
-
-            embeddings1.append(emb1)
-            embeddings2.append(emb2)
-            issame_array.append(deepcopy(issame))
-
-        embeddings1 = torch.cat(embeddings1, 0).cpu().numpy()
-        embeddings2 = torch.cat(embeddings2, 0).cpu().numpy()
-        issame_array = torch.cat(issame_array, 0).cpu().numpy()
-
-    distance_and_is_same = zip(np.sum((embeddings1 - embeddings2) ** 2, axis=1), issame_array)
-    distance_and_is_same_df = pd.DataFrame(distance_and_is_same)
-    negative_mean_distance = distance_and_is_same_df[distance_and_is_same_df[1] == False][0].mean()
-    positive_mean_distance = distance_and_is_same_df[distance_and_is_same_df[1] == True][0].mean()
-
-    thresholds = np.arange(0, 4, 0.01)
-    subtract_mean = False
-
-    tpr, fpr, accuracy, best_threshold = utils.Calculate_Roc(thresholds, embeddings1, embeddings2,
-                                                             np.asarray(issame_array), nrof_folds=nrof_folds,
-                                                             distance_metric=distance_metric,
-                                                             subtract_mean=subtract_mean)
-
-    thresholds = np.arange(0, 4, 0.001)
-    val, val_std, far, threshold_lowfar = utils.Calculate_Val(thresholds, embeddings1, embeddings2,
-                                                              np.asarray(issame_array),
-                                                              val_far,
-                                                              nrof_folds=nrof_folds,
-                                                              distance_metric=distance_metric,
-                                                              subtract_mean=subtract_mean)
-
-    print('Accuracy: {:.3%}+-{:.3%}'.format(np.mean(accuracy), np.std(accuracy)))
-    print('Validation rate: {:.3%}+-{:.3%} @ FAR={:.3%}'.format(val, val_std, far))
-    print('Best threshold: {:.3f}'.format(best_threshold))
-
-    if plotter:
-        if plot_distances:
-            plotter.plot('distance', 'step', name + '_an', 'Pairwise mean distance', step, negative_mean_distance)
-            plotter.plot('distance', 'step', name + '_ap', 'Pairwise mean distance', step, positive_mean_distance)
-
-        plotter.plot('accuracy', 'step', name, 'Accuracy', step, np.mean(accuracy))
-        plotter.plot('validation rate', 'step', name, 'Validation Rate @ FAR={:.3%}'.format(val_far), step, val)
-        plotter.plot('best threshold', 'step', name, 'Best Threshold', step, best_threshold)
 
 def parse_arguments(argv):
     parser = argparse.ArgumentParser()
@@ -100,6 +38,7 @@ def parse_arguments(argv):
     parser.add_argument('--all_cox', action='store_true')
 
     return parser.parse_args(argv)
+
 
 if __name__ == '__main__':
 
@@ -143,6 +82,8 @@ if __name__ == '__main__':
         args.cox_video3 = True
         args.cox_video4 = True
 
+
+
     test_loaders_list = Get_TestDataloaders(config,
                                             data_transform,
                                             batch_size,
@@ -177,4 +118,3 @@ if __name__ == '__main__':
                  distance_metric=0,
                  val_far=config.hyperparameters.val_far,
                  plot_distances=False)
-

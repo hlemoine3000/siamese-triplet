@@ -8,15 +8,14 @@ import json
 
 import torch
 import torch.optim as optim
-from torch import nn
 from torch.optim import lr_scheduler
-from torchvision import transforms, datasets
+from torchvision import transforms
 
-import dataloaders
+from dataset_utils import dataloaders, vggface2, coxs2v
+from ml_utils import trainer, losses, miners
 import models
-from trainer import Triplet_Trainer, Quadruplet_Trainer
 import utils
-import losses
+
 
 def parse_arguments(argv):
     parser = argparse.ArgumentParser()
@@ -55,9 +54,41 @@ def main(args):
         transforms.ToTensor()
     ])
 
-    # Set up data loaders
-    print('Building training model')
-    online_train_loader, test_container = dataloaders.base_loader(config, data_transform)
+    ###########################
+    # SET UP DATALOADERS HERE #
+    ###########################
+
+    test_batch_size = (config.hyperparameters.people_per_batch * config.hyperparameters.images_per_person) // 2
+    nrof_folds = config.dataset.cross_validation.num_fold
+    fold_tool = utils.FoldGenerator(nrof_folds,
+                                    config.dataset.cross_validation.num_train_folds,
+                                    config.dataset.cross_validation.num_val_folds)
+    train_folds, val_folds, test_folds = fold_tool.get_fold()
+
+
+    # online_train_loader = vggface2.get_vggface2_trainset(config.dataset.vggface2.train_dir,
+    #                                                      data_transform,
+    #                                                      config.hyperparameters.people_per_batch,
+    #                                                      config.hyperparameters.images_per_person)
+
+    online_train_loader = coxs2v.get_coxs2v_trainset(config.dataset.coxs2v.still_dir,
+                                                     config.dataset.coxs2v.video1_dir,
+                                                     config.dataset.coxs2v.video1_pairs,
+                                                     test_folds,
+                                                     nrof_folds,
+                                                     data_transform,
+                                                     config.hyperparameters.people_per_batch,
+                                                     config.hyperparameters.images_per_person)
+
+    test_container = dataloaders.Get_TestDataloaders(config,
+                                                     data_transform,
+                                                     test_batch_size,
+                                                     is_vggface2=False,
+                                                     is_lfw=True,
+                                                     is_cox_video1=True,
+                                                     is_cox_video2=True,
+                                                     is_cox_video3=True,
+                                                     is_cox_video4=True)
 
     #Set up training model
     print('Building training model')
@@ -89,39 +120,40 @@ def main(args):
     model = model.to(device)
     # optimizer = optimizer
 
-    plotter = utils.VisdomLinePlotter(env_name=config.visdom.environment_name, port=8097)
+    plotter = utils.VisdomLinePlotter(env_name=config.visdom.environment_name, port=config.visdom.port)
 
     # miner = utils.Triplet_Miner(margin, people_per_batch, images_per_person)
-    miner = utils.SemihardNegativeTripletSelector(parameters['margin'])
+    miner = miners.SemihardNegativeTripletSelector(config.hyperparameters.margin)
 
     # loss = nn.TripletMarginLoss(margin=parameters['margin'], swap=parameters['triplet_swap'])
     # loss = utils.TripletLoss(margin=parameters['margin'])
-    loss = losses.TripletLoss(parameters['margin'])
+    loss = losses.TripletLoss(config.hyperparameters.margin)
 
-
-    trainer = Triplet_Trainer(model,
-                              miner,
-                              loss,
-                              optimizer,
-                              scheduler,
-                              device,
-                              plotter,
-                              parameters['margin'],
-                              config.model.embedding_size,
-                              config.visdom.log_interval)
+    my_trainer = trainer.Triplet_Trainer(model,
+                                         miner,
+                                         loss,
+                                         optimizer,
+                                         scheduler,
+                                         device,
+                                         plotter,
+                                         config.hyperparameters.margin,
+                                         config.model.embedding_size,
+                                         config.visdom.log_interval)
 
     # Loop over epochs
     print('Training Launched.')
     for epoch in range(start_epoch, parameters['n_epochs']):
 
         # Validation
-        for test_name, test_loader, nrof_folds in test_container:
+        for test_name, test_loader in test_container:
             print('\nEvaluation on {}'.format(test_name))
-            trainer.Evaluate(test_loader, name=test_name, nrof_folds=nrof_folds)
+            my_trainer.Evaluate(test_loader,
+                                name=test_name,
+                                nrof_folds=nrof_folds)
 
         # Training
         print('\nTrain Epoch {}'.format(epoch))
-        trainer.Train_Epoch(online_train_loader)
+        my_trainer.Train_Epoch(online_train_loader)
 
         # Save model
         if not (epoch + 1) % config.output.save_interval:

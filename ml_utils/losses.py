@@ -55,6 +55,7 @@ class QuadrupletLoss_bad(nn.Module):
         losses = F.relu(distance_positive - distance_negative - self.lamda * distance_target + self.margin1)
         return losses.mean() if size_average else losses.sum()
 
+
 class QuadrupletLoss(nn.Module):
     """
     Triplet loss
@@ -83,54 +84,35 @@ class QuadrupletLoss(nn.Module):
         return quadruplet_loss
 
 
-class OnlineContrastiveLoss(nn.Module):
+class QuadrupletLoss2(nn.Module):
     """
-    Online Contrastive loss
-    Takes a batch of embeddings and corresponding labels.
-    Pairs are generated using pair_selector object that take embeddings and targets and return indices of positive
-    and negative pairs
+    Triplet loss
+    Takes embeddings of an anchor sample, a positive sample and a negative sample
     """
 
-    def __init__(self, margin, pair_selector):
-        super(OnlineContrastiveLoss, self).__init__()
-        self.margin = margin
-        self.pair_selector = pair_selector
+    def __init__(self, margin1, margin2, lamda=0.1):
+        super(QuadrupletLoss2, self).__init__()
+        self.margin1 = margin1
+        self.margin2 = margin2
+        self.lamda = lamda
+        self.loss_keys = ['cls_losses', 'sep_losses', 'adv_losses']
 
-    def forward(self, embeddings, target):
-        positive_pairs, negative_pairs = self.pair_selector.get_pairs(embeddings, target)
-        if embeddings.is_cuda:
-            positive_pairs = positive_pairs.cuda()
-            negative_pairs = negative_pairs.cuda()
-        positive_loss = (embeddings[positive_pairs[:, 0]] - embeddings[positive_pairs[:, 1]]).pow(2).sum(1)
-        negative_loss = F.relu(
-            self.margin - (embeddings[negative_pairs[:, 0]] - embeddings[negative_pairs[:, 1]]).pow(2).sum(
-                1).sqrt()).pow(2)
-        loss = torch.cat([positive_loss, negative_loss], dim=0)
-        return loss.mean()
+    def forward(self, anchor, positive, negative, target):
 
+        losses_dict = {}
 
-class OnlineTripletLoss(nn.Module):
-    """
-    Online Triplets loss
-    Takes a batch of embeddings and corresponding labels.
-    Triplets are generated using triplet_selector object that take embeddings and targets and return indices of
-    triplets
-    """
+        distance_positive = (anchor - positive).pow(2).sum(1)  # .pow(.5)
+        distance_negative = (anchor - negative).pow(2).sum(1)  # .pow(.5)
+        distance_target = (anchor - target).pow(2).sum(1)  # .pow(.5)
 
-    def __init__(self, margin, triplet_selector):
-        super(OnlineTripletLoss, self).__init__()
-        self.margin = margin
-        self.triplet_selector = triplet_selector
+        cls_losses = F.relu(distance_positive - distance_negative + self.margin1)
+        sep_losses = F.relu(distance_positive - distance_target + self.margin2)
+        adv_losses = distance_target - distance_negative
 
-    def forward(self, embeddings, target):
+        quadruplet_loss = cls_losses.mean() + sep_losses.mean() + self.lamda * adv_losses.mean()
 
-        triplets = self.triplet_selector.get_triplets(embeddings, target)
+        losses_dict['cls_losses'] = cls_losses.mean()
+        losses_dict['sep_losses'] = sep_losses.mean()
+        losses_dict['adv_losses'] = self.lamda * adv_losses.mean()
 
-        if embeddings.is_cuda:
-            triplets = triplets.cuda()
-
-        ap_distances = (embeddings[triplets[:, 0]] - embeddings[triplets[:, 1]]).pow(2).sum(1)  # .pow(.5)
-        an_distances = (embeddings[triplets[:, 0]] - embeddings[triplets[:, 2]]).pow(2).sum(1)  # .pow(.5)
-        losses = F.relu(ap_distances - an_distances + self.margin)
-
-        return losses.mean(), len(triplets)
+        return quadruplet_loss, losses_dict

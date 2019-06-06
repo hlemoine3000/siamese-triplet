@@ -51,12 +51,17 @@
     "model_arch": "resnet50",
     "pretrained_imagenet": false,
     "checkpoint": true,
+    "checkpoint_path2": "/export/livia/data/lemoineh/torch_facetripletloss/models/COXfinetune2/model_169.pth",
     "checkpoint_path": "/export/livia/data/lemoineh/torch_facetripletloss/models/TripletLossPlots6/model_199.pth",
     "embedding_size": 128
   },
 
   "hyperparameters": {
+
     "margin": 0.2,
+    "margin2": 0.3,
+    "lamda": 1.0,
+
     "n_epochs": 1000,
     "image_size": 160,
     "images_per_person": 5,
@@ -65,7 +70,7 @@
     "optimizer": "SGD",
     "learning_rate": 0.0005,
     "learning_rate_decay_epochs": 4,
-    "learning_rate_decay_factor": 0.98,
+    "learning_rate_decay_factor": 0.99,
     "weight_decay": 2e-4,
     "moving_average_decay": 0.9999,
 
@@ -77,7 +82,8 @@
   },
 
   "visdom": {
-    "environment_name": "Quadruplet Loss Plots3",
+    "environment_name": "Quadruplet Loss Plots4",
+    "port": 8097,
     "log_interval": 5
   }
 
