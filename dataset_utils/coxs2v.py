@@ -5,13 +5,14 @@ from dataset_utils import sampler
 
 
 def get_coxs2v_trainset(still_dir,
-                          video_dir,
-                          pairs_file,
-                          folds,
-                          nrof_folds,
-                          data_transform,
-                          people_per_batch,
-                          images_per_person,
+                        video_dir,
+                        pairs_file,
+                        folds,
+                        nrof_folds,
+                        data_transform,
+                        people_per_batch,
+                        images_per_person,
+                        video_only=False,
                         samples_division_list=None,  # [0.6, 0.4]
                         div_idx: int = -1):
 
@@ -22,6 +23,7 @@ def get_coxs2v_trainset(still_dir,
                                    pairs_file,
                                    data_transform,
                                    folds,
+                                   video_only=video_only,
                                    num_folds=nrof_folds,
                                    samples_division_list=samples_division_list,  # [0.4, 0.6]
                                    div_idx=div_idx)

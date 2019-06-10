@@ -1,12 +1,7 @@
 {
   "name": "config",
   "version": "1.0.0",
-
-
-  "train_mode": {
-    "mode": "tripletloss",
-    "miner": "semihardtriplets"
-  },
+  "experiment": "da_vggface2_to_video2",
 
   "dataset": {
 
@@ -60,7 +55,7 @@
 
     "margin": 0.2,
     "margin2": 0.3,
-    "lamda": 1.0,
+    "lamda": 0.1,
 
     "n_epochs": 1000,
     "image_size": 160,
@@ -70,7 +65,7 @@
     "optimizer": "SGD",
     "learning_rate": 0.0005,
     "learning_rate_decay_epochs": 4,
-    "learning_rate_decay_factor": 0.99,
+    "learning_rate_decay_factor": 0.98,
     "weight_decay": 2e-4,
     "moving_average_decay": 0.9999,
 
@@ -82,7 +77,7 @@
   },
 
   "visdom": {
-    "environment_name": "Quadruplet Loss Plots4",
+    "environment_name": "DA_vggface2_to_video2_L3",
     "port": 8097,
     "log_interval": 5
   }

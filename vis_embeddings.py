@@ -5,6 +5,7 @@ import numpy as np
 import tqdm
 import pandas as pd
 import json
+from copy import deepcopy
 
 import torch
 from torch.utils.data import DataLoader
@@ -14,20 +15,15 @@ from sklearn.manifold import TSNE
 
 import utils
 import models
-from dataset_utils.dataloaders import Get_TestDataloaders
-
-
-def vis_embeddings():
-    X = np.array([[0, 0, 0], [0, 1, 1], [1, 0, 1], [1, 1, 1]])
-    X_embedded = TSNE(n_components=2).fit_transform(X)
-    X_embedded.shape
+from dataset_utils import dataloaders
+from utils.plotter import VisdomScatterPlotter
 
 
 def parse_arguments(argv):
     parser = argparse.ArgumentParser()
 
     parser.add_argument('--config', type=str,
-                        help='Path to the configuration file', default='config/evaluation.json')
+                        help='Path to the configuration file', default='config/vis_config.json')
     parser.add_argument('--vggface2', action='store_true')
     parser.add_argument('--lfw', action='store_true')
     parser.add_argument('--cox_video1', action='store_true')
@@ -53,15 +49,13 @@ if __name__ == '__main__':
     use_cuda = torch.cuda.is_available()
     device = torch.device("cuda:0" if use_cuda else "cpu")
 
-    batch_size = (config.hyperparameters.people_per_batch * config.hyperparameters.images_per_person) // 2
     nrof_folds = config.dataset.cross_validation.num_fold
-
     fold_tool = utils.FoldGenerator(nrof_folds,
                                     config.dataset.cross_validation.num_train_folds,
                                     config.dataset.cross_validation.num_val_folds)
     train_folds, val_folds, test_folds = fold_tool.get_fold()
 
-    #Data transform
+    # Data transform
     data_transform = transforms.Compose([
         transforms.Resize((config.hyperparameters.image_size, config.hyperparameters.image_size), interpolation=1),
         transforms.ToTensor()
@@ -82,18 +76,6 @@ if __name__ == '__main__':
         args.cox_video3 = True
         args.cox_video4 = True
 
-
-
-    test_loaders_list = Get_TestDataloaders(config,
-                                            data_transform,
-                                            batch_size,
-                                            is_vggface2=args.vggface2,
-                                            is_lfw=args.lfw,
-                                            is_cox_video1=args.cox_video1,
-                                            is_cox_video2=args.cox_video2,
-                                            is_cox_video3=args.cox_video3,
-                                            is_cox_video4=args.cox_video4)
-
     # Load model
     print('Loading from checkpoint {}'.format(config.model.checkpoint_path))
     checkpoint = torch.load(config.model.checkpoint_path)
@@ -103,18 +85,67 @@ if __name__ == '__main__':
                               embedding_size=embedding_size)
     model.load_state_dict(checkpoint['model_state_dict'])
     model = model.to(device)
+    model.eval()
 
-    # Launch evaluation
-    for test_name, test_loader in test_loaders_list:
+    data_loaders_list = dataloaders.Get_TrainDataloaders(config,
+                                                         data_transform,
+                                                         config.embeddings_visualisation.num_class,
+                                                         config.embeddings_visualisation.num_sample_per_class,
+                                                         [0],
+                                                         nrof_folds,
+                                                         is_vggface2=False,
+                                                         is_cox_video1=False,
+                                                         is_cox_video2=True,
+                                                         is_cox_video3=False,
+                                                         is_cox_video4=False)
 
-        print('\nEvaluation on {}'.format(test_name))
-        Evaluate(test_loader,
-                 model,
-                 device,
-                 0,
-                 plotter=None,
-                 name=test_name,
-                 nrof_folds=nrof_folds,
-                 distance_metric=0,
-                 val_far=config.hyperparameters.val_far,
-                 plot_distances=False)
+    plotter = utils.VisdomLinePlotter(env_name=config.visdom.environment_name, port=config.visdom.port)
+
+    # Launch embeddings extraction
+    embeddings = []
+    label_array = []
+    textlabels = []
+
+    tbar = tqdm.tqdm(data_loaders_list)
+    with torch.no_grad():
+        for name, data_loader in tbar:
+
+            print('\nExtracting embeddings on {}'.format(name))
+
+            #extract one batch of each datasets
+            images_batch, label_batch = next(iter(data_loader))
+
+            # Transfer to GPU
+            image_batch = images_batch.to(device, non_blocking=True)
+
+            emb = model.forward(image_batch)
+
+            embeddings.append(emb)
+            label_array.append(deepcopy(label_batch))
+
+            embeddings = torch.cat(embeddings, 0).cpu().numpy()
+            label_array = torch.cat(label_array, 0).cpu().numpy()
+
+            # test label in dataset
+            for label in label_array:
+                for class_name, idx in data_loader.dataset.class_to_idx.items():
+                    if idx == label:
+                        textlabels.append(class_name)
+
+    X_embedded = TSNE(n_components=2, perplexity=20.0,
+                 early_exaggeration=12.0, learning_rate=200.0, n_iter=10000,
+                 n_iter_without_progress=300, min_grad_norm=1e-7,
+                 metric="euclidean", init="random", verbose=1,
+                 random_state=None, method='exact', angle=0.2).fit_transform(embeddings)
+    legends = utils.unique(textlabels)
+
+    my_plot = VisdomScatterPlotter(env_name=config.visdom.environment_name,
+                                   port=config.visdom.port)
+
+    label_array += 1
+    my_plot.plot('Embeddings Visualisation TSNE',
+                 X_embedded,
+                 label_array,
+                 legends=legends)
+
+    print('Visualisation completed.')

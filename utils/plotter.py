@@ -2,6 +2,7 @@
 import numpy as np
 from visdom import Visdom
 
+
 class VisdomLinePlotter(object):
     """Plots to Visdom"""
     def __init__(self, env_name='main', port=8097):
@@ -20,3 +21,26 @@ class VisdomLinePlotter(object):
             ))
         else:
             self.viz.line(X=np.array([x]), Y=np.array([y]), env=self.env, win=self.plots[var_name], name=split_name, update = 'append')
+
+
+class VisdomScatterPlotter(object):
+    """Plots to Visdom"""
+    def __init__(self, env_name='main', port=8097):
+        self.viz = Visdom(port=port)
+        self.env = env_name
+        self.plots = {}
+
+    def plot(self, title_name, x, y, legends=None):
+        if title_name not in self.plots:
+
+            self.plots[title_name] = self.viz.scatter(X=x,
+                                                      Y=y,
+                                                      env=self.env,
+                                                      opts=dict(
+                                                          title=title_name,
+                                                          legends=legends,
+                                                          markersymbol='dot'
+                                                      ))
+
+        else:
+            print('nothing')

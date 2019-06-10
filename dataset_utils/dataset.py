@@ -142,15 +142,16 @@ class DatasetS2V(data.Dataset):
                  transform: transforms,
                  fold_list: list,
                  num_folds: int=10,
-                 preload: bool=False,
-                 video_only: bool=False,
-                 samples_division_list=None,  # [0.4, 0.6]
-                 div_idx: int=-1):
+                 preload: bool = False,
+                 video_only: bool = False,
+                 samples_division_list = None,  # [0.4, 0.6]
+                 div_idx: int = -1):
 
         self.still_source = still_source
         self.video_source = video_source
         self.pair_file = pair_file
         self.transform = transform
+        self.video_only = video_only
 
         self.subject_list, self.nb_folds = utils.get_subject_list(pair_file)
         self.nb_subject = len(self.subject_list)
@@ -166,7 +167,6 @@ class DatasetS2V(data.Dataset):
                 raise Exception('The sample division list is incorrect as the division sum should be 1. The sum is {}.'.format(sum(samples_division_list)))
             if (div_idx >= len(samples_division_list)) or (div_idx < 0):
                 raise Exception('The division index ({}) must be a valid index for the division list {}.'.format(div_idx, samples_division_list))
-
 
         # Transform class name to index
         subject_set = utils.extract_fold_list(fold_list, self.subject_list, self.nb_subject_per_fold)
@@ -195,9 +195,8 @@ class DatasetS2V(data.Dataset):
                 paths = video_image_paths
             else:
                 paths = [still_image_path] + video_image_paths
-
-            # (class_idx, sample_idx)
-            stillclass_to_sampleidx[class_to_idx[subject]] = len(samples)
+                # (class_idx, sample_idx)
+                stillclass_to_sampleidx[class_to_idx[subject]] = len(samples)
 
             for path in paths:
                 item = (path, class_to_idx[subject])

@@ -43,6 +43,8 @@ def Get_PairsImageFolderLoader(data_dir,
 def Get_TestDataloaders(config,
                         data_transform,
                         batch_size,
+                        folds,
+                        nrof_folds,
                         is_vggface2=False,
                         is_lfw=False,
                         is_cox_video1=False,
@@ -51,12 +53,6 @@ def Get_TestDataloaders(config,
                         is_cox_video4=False):
 
     test_loaders_list = []
-
-    nrof_folds = config.dataset.cross_validation.num_fold
-    fold_tool = utils.FoldGenerator(nrof_folds,
-                                    config.dataset.cross_validation.num_train_folds,
-                                    config.dataset.cross_validation.num_val_folds)
-    train_folds, val_folds, test_folds = fold_tool.get_fold()
 
     # VGGFACE2 dataset
     if is_vggface2:
@@ -81,7 +77,7 @@ def Get_TestDataloaders(config,
         data_loader = coxs2v.get_coxs2v_testset(config.dataset.coxs2v.still_dir,
                                          config.dataset.coxs2v.video1_dir,
                                          config.dataset.coxs2v.video1_pairs,
-                                         test_folds,
+                                         folds,
                                          nrof_folds,
                                          data_transform,
                                          batch_size)
@@ -91,7 +87,7 @@ def Get_TestDataloaders(config,
         data_loader = coxs2v.get_coxs2v_testset(config.dataset.coxs2v.still_dir,
                                          config.dataset.coxs2v.video2_dir,
                                          config.dataset.coxs2v.video2_pairs,
-                                         test_folds,
+                                         folds,
                                          nrof_folds,
                                          data_transform,
                                          batch_size)
@@ -101,7 +97,7 @@ def Get_TestDataloaders(config,
         data_loader = coxs2v.get_coxs2v_testset(config.dataset.coxs2v.still_dir,
                                          config.dataset.coxs2v.video3_dir,
                                          config.dataset.coxs2v.video3_pairs,
-                                         test_folds,
+                                         folds,
                                          nrof_folds,
                                          data_transform,
                                          batch_size)
@@ -111,7 +107,7 @@ def Get_TestDataloaders(config,
         data_loader = coxs2v.get_coxs2v_testset(config.dataset.coxs2v.still_dir,
                                          config.dataset.coxs2v.video4_dir,
                                          config.dataset.coxs2v.video4_pairs,
-                                         test_folds,
+                                         folds,
                                          nrof_folds,
                                          data_transform,
                                          batch_size)
@@ -119,11 +115,14 @@ def Get_TestDataloaders(config,
 
     return test_loaders_list
 
+
 def Get_TrainDataloaders(config,
                          data_transform,
-                         batch_size,
+                         people_per_batch,
+                         images_per_person,
+                         folds,
+                         nrof_folds,
                          is_vggface2=False,
-                         is_lfw=False,
                          is_cox_video1=False,
                          is_cox_video2=False,
                          is_cox_video3=False,
@@ -131,72 +130,57 @@ def Get_TrainDataloaders(config,
 
     train_loaders_list = []
 
-    nrof_folds = config.dataset.cross_validation.num_fold
-    fold_tool = utils.FoldGenerator(nrof_folds,
-                                    config.dataset.cross_validation.num_train_folds,
-                                    config.dataset.cross_validation.num_val_folds)
-    train_folds, val_folds, test_folds = fold_tool.get_fold()
-
     # VGGFACE2 dataset
     if is_vggface2:
         data_loader = vggface2.get_vggface2_trainset(config.dataset.vggface2.train_dir,
-                                           data_transform,
-                                                     )
-
-        (train_dir,
-         data_transform,
-         people_per_batch,
-         images_per_person)
-        test_loaders_list.append(('vggface2', data_loader))
-
-    # LFW dataset
-    if is_lfw:
-        data_loader = lfw.get_lfw_testset(config.dataset.lfw.test_dir,
-                                      config.dataset.lfw.pairs_file,
-                                      data_transform,
-                                      batch_size,
-                                      preload=False)
-        test_loaders_list.append(('lfw', data_loader))
+                                                     data_transform,
+                                                     people_per_batch,
+                                                     images_per_person)
+        train_loaders_list.append(('vggface2', data_loader))
 
     # COXS2V dataset
     if is_cox_video1:
-        data_loader = coxs2v.get_coxs2v_testset(config.dataset.coxs2v.still_dir,
-                                         config.dataset.coxs2v.video1_dir,
-                                         config.dataset.coxs2v.video1_pairs,
-                                         test_folds,
-                                         nrof_folds,
-                                         data_transform,
-                                         batch_size)
-        test_loaders_list.append(('cox_video1', data_loader))
+        data_loader = coxs2v.get_coxs2v_trainset(config.dataset.coxs2v.still_dir,
+                                                 config.dataset.coxs2v.video1_dir,
+                                                 config.dataset.coxs2v.video1_pairs,
+                                                 folds,
+                                                 nrof_folds,
+                                                 data_transform,
+                                                 people_per_batch,
+                                                 images_per_person)
+        train_loaders_list.append(('cox_video1', data_loader))
 
     if is_cox_video2:
-        data_loader = coxs2v.get_coxs2v_testset(config.dataset.coxs2v.still_dir,
-                                         config.dataset.coxs2v.video2_dir,
-                                         config.dataset.coxs2v.video2_pairs,
-                                         test_folds,
-                                         nrof_folds,
-                                         data_transform,
-                                         batch_size)
-        test_loaders_list.append(('cox_video2', data_loader))
+        data_loader = coxs2v.get_coxs2v_trainset(config.dataset.coxs2v.still_dir,
+                                                 config.dataset.coxs2v.video2_dir,
+                                                 config.dataset.coxs2v.video2_pairs,
+                                                 folds,
+                                                 nrof_folds,
+                                                 data_transform,
+                                                 people_per_batch,
+                                                 images_per_person)
+        train_loaders_list.append(('cox_video2', data_loader))
 
     if is_cox_video3:
-        data_loader = coxs2v.get_coxs2v_testset(config.dataset.coxs2v.still_dir,
-                                         config.dataset.coxs2v.video3_dir,
-                                         config.dataset.coxs2v.video3_pairs,
-                                         test_folds,
-                                         nrof_folds,
-                                         data_transform,
-                                         batch_size)
-        test_loaders_list.append(('cox_video3', data_loader))
+        data_loader = coxs2v.get_coxs2v_trainset(config.dataset.coxs2v.still_dir,
+                                                 config.dataset.coxs2v.video3_dir,
+                                                 config.dataset.coxs2v.video3_pairs,
+                                                 folds,
+                                                 nrof_folds,
+                                                 data_transform,
+                                                 people_per_batch,
+                                                 images_per_person)
+        train_loaders_list.append(('cox_video3', data_loader))
 
     if is_cox_video4:
-        data_loader = coxs2v.get_coxs2v_testset(config.dataset.coxs2v.still_dir,
-                                         config.dataset.coxs2v.video4_dir,
-                                         config.dataset.coxs2v.video4_pairs,
-                                         test_folds,
-                                         nrof_folds,
-                                         data_transform,
-                                         batch_size)
-        test_loaders_list.append(('cox_video4', data_loader))
+        data_loader = coxs2v.get_coxs2v_trainset(config.dataset.coxs2v.still_dir,
+                                                 config.dataset.coxs2v.video4_dir,
+                                                 config.dataset.coxs2v.video4_pairs,
+                                                 folds,
+                                                 nrof_folds,
+                                                 data_transform,
+                                                 people_per_batch,
+                                                 images_per_person)
+        train_loaders_list.append(('cox_video4', data_loader))
 
-    return test_loaders_list
+    return train_loaders_list

@@ -38,10 +38,13 @@ def main(args):
     parameters = config.hyperparameters
 
     # Set up output directory
-    subdir = datetime.strftime(datetime.now(), '%Y%m%d-%H%M%S')
+    # subdir = datetime.strftime(datetime.now(), '%Y%m%d-%H%M%S')
+    subdir = config.visdom.environment_name
     model_dir = os.path.join(os.path.expanduser(config.output.output_dir), subdir)
     if not os.path.isdir(model_dir):  # Create the model directory if it doesn't exist
         os.makedirs(model_dir)
+    else:
+        raise Exception('Environment name {} already taken.'.format(subdir))
     config_filename = path_leaf(args.config)
     copyfile(args.config, os.path.join(model_dir, config_filename))
 
@@ -72,9 +75,9 @@ def main(args):
     #                                                      config.hyperparameters.images_per_person)
 
     online_train_loader = coxs2v.get_coxs2v_trainset(config.dataset.coxs2v.still_dir,
-                                                     config.dataset.coxs2v.video1_dir,
-                                                     config.dataset.coxs2v.video1_pairs,
-                                                     test_folds,
+                                                     config.dataset.coxs2v.video3_dir,
+                                                     config.dataset.coxs2v.video3_pairs,
+                                                     train_folds,
                                                      nrof_folds,
                                                      data_transform,
                                                      config.hyperparameters.people_per_batch,
@@ -83,12 +86,18 @@ def main(args):
     test_container = dataloaders.Get_TestDataloaders(config,
                                                      data_transform,
                                                      test_batch_size,
+                                                     test_folds,
+                                                     nrof_folds,
                                                      is_vggface2=False,
                                                      is_lfw=True,
                                                      is_cox_video1=True,
                                                      is_cox_video2=True,
                                                      is_cox_video3=True,
                                                      is_cox_video4=True)
+
+    ##########################
+    # SET UP DATALOADERS END #
+    ##########################
 
     #Set up training model
     print('Building training model')

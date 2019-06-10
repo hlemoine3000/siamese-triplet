@@ -60,7 +60,7 @@ class Triplet_Trainer(object):
                           self.step, lr)
 
         loader_length = len(train_loader)
-        tbar = tqdm.tqdm(train_loader, dynamic_ncols=True)
+        tbar = tqdm.tqdm(train_loader)
         for i, (local_batch, local_labels) in enumerate(tbar):
             # Transfer to GPU
             local_batch = local_batch.to(self.device)

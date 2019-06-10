@@ -2,6 +2,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
+
 class ContrastiveLoss(nn.Module):
     """
     Contrastive loss
@@ -43,7 +44,7 @@ class QuadrupletLoss_bad(nn.Module):
     """
 
     def __init__(self, margin1, margin2, lamda=0.1):
-        super(QuadrupletLoss, self).__init__()
+        super(QuadrupletLoss_bad, self).__init__()
         self.margin1 = margin1
         self.margin2 = margin2
         self.lamda = lamda
@@ -107,12 +108,47 @@ class QuadrupletLoss2(nn.Module):
 
         cls_losses = F.relu(distance_positive - distance_negative + self.margin1)
         sep_losses = F.relu(distance_positive - distance_target + self.margin2)
-        adv_losses = distance_target - distance_negative
+        adv_losses = F.relu(distance_target - distance_negative)
 
         quadruplet_loss = cls_losses.mean() + sep_losses.mean() + self.lamda * adv_losses.mean()
 
         losses_dict['cls_losses'] = cls_losses.mean()
         losses_dict['sep_losses'] = sep_losses.mean()
         losses_dict['adv_losses'] = self.lamda * adv_losses.mean()
+
+        return quadruplet_loss, losses_dict
+
+class QuadrupletLoss3(nn.Module):
+    """
+    Triplet loss
+    Takes embeddings of an anchor sample, a positive sample and a negative sample
+    """
+
+    def __init__(self, margin1, margin2, lamda=0.1):
+        super(QuadrupletLoss3, self).__init__()
+        self.margin1 = margin1
+        self.margin2 = margin2
+        self.lamda = lamda
+        self.loss_keys = ['loss1', 'loss2', 'loss3', 'loss4']
+
+    def forward(self, anchor, positive, negative, target):
+
+        losses_dict = {}
+
+        distance_positive = (anchor - positive).pow(2).sum(1)  # .pow(.5)
+        distance_negative = (anchor - negative).pow(2).sum(1)  # .pow(.5)
+        distance_target = (anchor - target).pow(2).sum(1)  # .pow(.5)
+
+        loss1 = F.relu(distance_positive - distance_negative + self.margin1)
+        loss2 = F.relu(distance_positive - distance_target + 2 * self.margin2)
+        loss3 = F.relu(distance_negative - distance_positive - 2 * self.margin2)
+        loss4 = F.relu(distance_target - distance_positive - 3 * self.margin2)
+
+        quadruplet_loss = loss1.mean() + loss2.mean() + self.lamda * (loss3.mean() * loss4.mean())
+
+        losses_dict['loss1'] = loss1.mean()
+        losses_dict['loss2'] = loss2.mean()
+        losses_dict['loss3'] = self.lamda * loss3.mean()
+        losses_dict['loss4'] = self.lamda * loss4.mean()
 
         return quadruplet_loss, losses_dict

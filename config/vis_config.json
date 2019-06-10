@@ -2,15 +2,7 @@
   "name": "config",
   "version": "1.0.0",
 
-
-  "train_mode": {
-    "mode": "tripletloss",
-    "miner": "semihardtriplets"
-  },
-
   "dataset": {
-
-    "dataloader": "coxfinetune",
 
     "vggface2": {
       "train_dir": "/export/livia/data/lemoineh/vggface2/train_182",
@@ -44,41 +36,51 @@
     }
   },
 
-  "output": {
-    "output_dir": "/export/livia/data/lemoineh/torch_facetripletloss/models",
-    "save_interval": 10
-  },
-
-  "model": {
-    "model_arch": "resnet50",
-    "pretrained_imagenet": false,
-    "checkpoint": true,
-    "checkpoint_path2": "/export/livia/data/lemoineh/torch_facetripletloss/models/TripletLossPlots6/model_199.pth",
-    "checkpoint_path": "/export/livia/data/lemoineh/torch_facetripletloss/models/COXvideo2_finetune/model_259.pth",
-    "embedding_size": 128
-  },
-
   "hyperparameters": {
+
     "margin": 0.2,
+    "margin2": 0.3,
+    "lamda": 0.1,
+
     "n_epochs": 1000,
     "image_size": 160,
     "images_per_person": 5,
-    "people_per_batch": 40,
+    "people_per_batch": 20,
 
     "optimizer": "SGD",
-    "learning_rate": 0.0004,
+    "learning_rate": 0.0005,
     "learning_rate_decay_epochs": 4,
-    "learning_rate_decay_factor": 0.98,
+    "learning_rate_decay_factor": 0.99,
     "weight_decay": 2e-4,
     "moving_average_decay": 0.9999,
+
+    "val_far": 1e-2,
 
     "triplet_swap": true,
     "random_crop": false,
     "random_flip": false
   },
 
+  "model": {
+    "model_arch": "resnet50",
+    "pretrained_imagenet": false,
+    "checkpoint": true,
+    "checkpoint_path2": "/export/livia/data/lemoineh/torch_facetripletloss/models/COXvideo2_finetune/model_259.pth",
+    "checkpoint_path": "/export/livia/data/lemoineh/torch_facetripletloss/models/TripletLossPlots6/model_199.pth",
+    "embedding_size": 128
+  },
+
+  "embeddings_visualisation": {
+    "num_class": 5,
+    "num_sample_per_class": 10,
+
+    "tsne":{
+      "perplexity": 30
+    }
+  },
+
   "visdom": {
-    "environment_name": "COXvideo2tovideo3_finetune",
+    "environment_name": "Embeddings visualisation1",
     "port": 8097,
     "log_interval": 5
   }

@@ -11,7 +11,6 @@ import torch.optim as optim
 from torch.optim import lr_scheduler
 from torchvision import transforms
 
-from experiments import da_exp
 from ml_utils.trainer import Quadruplet_Trainer
 from ml_utils import losses
 from ml_utils import miners
@@ -26,8 +25,9 @@ import utils
 def parse_arguments(argv):
     parser = argparse.ArgumentParser()
 
+    parser.add_argument('training_mode', default='triplet_loss', help='BAR!')
     parser.add_argument('--config', type=str,
-                        help='Path to the configuration file', default='config/da_config.json')
+                        help='Path to the configuration file', default='config/train_config.json')
 
     return parser.parse_args(argv)
 
@@ -37,11 +37,9 @@ def path_leaf(path):
 
 def main(args):
 
-    print('Feature extractor training.')
     print('CONFIGURATION:\t{}'.format(args.config))
     with open(args.config) as json_config_file:
         config = utils.AttrDict(json.load(json_config_file))
-    parameters = config.hyperparameters
 
     # Set up output directory
     # subdir = datetime.strftime(datetime.now(), '%Y%m%d-%H%M%S')
@@ -59,14 +57,53 @@ def main(args):
     device = torch.device("cuda:0" if use_cuda else "cpu")
 
     data_transform = transforms.Compose([
-        transforms.Resize((parameters["image_size"], parameters["image_size"]), interpolation=1),
+        transforms.Resize((config.hyperparameters.image_size, config.hyperparameters.image_size), interpolation=1),
         transforms.ToTensor()
     ])
 
+    test_batch_size = (config.hyperparameters.people_per_batch * config.hyperparameters.images_per_person) // 2
     nrof_folds = config.dataset.cross_validation.num_fold
-    source_loader, target_loader, test_loaders_list = da_exp.Get_DADataloaders(config.experiment,
-                                                                               config,
-                                                                               data_transform)
+    fold_tool = utils.FoldGenerator(nrof_folds,
+                                    config.dataset.cross_validation.num_train_folds,
+                                    config.dataset.cross_validation.num_val_folds)
+    train_folds, val_folds, test_folds = fold_tool.get_fold()
+
+    ###########################
+    # SET UP DATALOADERS HERE #
+    ###########################
+
+    source_loader = dataset_utils.get_coxs2v_trainset(config.dataset.coxs2v.still_dir,
+                                                      config.dataset.coxs2v.video2_dir,
+                                                      config.dataset.coxs2v.video2_pairs,
+                                                      train_folds,
+                                                      nrof_folds,
+                                                      data_transform,
+                                                      config.hyperparameters.people_per_batch,
+                                                      config.hyperparameters.images_per_person)
+
+    target_loader = dataset_utils.get_coxs2v_trainset(config.dataset.coxs2v.still_dir,
+                                                      config.dataset.coxs2v.video4_dir,
+                                                      config.dataset.coxs2v.video4_pairs,
+                                                      val_folds,
+                                                      nrof_folds,
+                                                      data_transform,
+                                                      config.hyperparameters.people_per_batch,
+                                                      config.hyperparameters.images_per_person)
+
+    test_loaders_list = dataloaders.Get_TestDataloaders(config,
+                                                        data_transform,
+                                                        test_batch_size,
+                                                        test_folds,
+                                                        nrof_folds,
+                                                        is_vggface2=False,
+                                                        is_lfw=True,
+                                                        is_cox_video1=False,
+                                                        is_cox_video2=True,
+                                                        is_cox_video3=False,
+                                                        is_cox_video4=True)
+    ###################
+    # DATALOADERS END #
+    ###################
 
     #Set up training model
     print('Building training model')
@@ -84,9 +121,9 @@ def main(args):
                               embedding_size=embedding_size,
                               imgnet_pretrained=config.model.pretrained_imagenet)
 
-    optimizer = optim.SGD(model.parameters(), lr=parameters['learning_rate'], momentum=0.9, nesterov=True, weight_decay=2e-4)
+    optimizer = optim.SGD(model.parameters(), lr=config.hyperparameters.learning_rate, momentum=0.9, nesterov=True, weight_decay=2e-4)
 
-    scheduler = lr_scheduler.ExponentialLR(optimizer, parameters['learning_rate_decay_factor'])
+    scheduler = lr_scheduler.ExponentialLR(optimizer, config.hyperparameters.learning_rate_decay_factor)
 
     if config.model.checkpoint:
         model.load_state_dict(checkpoint['model_state_dict'])
@@ -98,9 +135,9 @@ def main(args):
     plotter = utils.VisdomLinePlotter(env_name=config.visdom.environment_name, port=config.visdom.port)
 
     print('Quadruplet loss training mode.')
-    miner = miners.SemihardNegativeQuadrupletSelector(parameters['margin'])
+    miner = miners.SemihardNegativeQuadrupletSelector(config.hyperparameters.margin)
 
-    loss = losses.QuadrupletLoss3(config.hyperparameters.margin,
+    loss = losses.QuadrupletLoss2(config.hyperparameters.margin,
                                   config.hyperparameters.margin2,
                                   lamda=config.hyperparameters.lamda)
 
@@ -111,13 +148,13 @@ def main(args):
                                  scheduler,
                                  device,
                                  plotter,
-                                 parameters['margin'],
+                                 config.hyperparameters.margin,
                                  config.model.embedding_size,
                                  config.visdom.log_interval)
 
     # Loop over epochs
     print('Training Launched.')
-    for epoch in range(start_epoch, parameters['n_epochs']):
+    for epoch in range(start_epoch, config.hyperparameters.n_epochs):
 
         # Validation
         for test_name, test_loader in test_loaders_list:
