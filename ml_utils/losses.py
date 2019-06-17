@@ -118,14 +118,98 @@ class QuadrupletLoss2(nn.Module):
 
         return quadruplet_loss, losses_dict
 
+
 class QuadrupletLoss3(nn.Module):
     """
     Triplet loss
     Takes embeddings of an anchor sample, a positive sample and a negative sample
     """
 
-    def __init__(self, margin1, margin2, lamda=0.1):
+    def __init__(self, margin, lamda=0.1):
         super(QuadrupletLoss3, self).__init__()
+        self.margin = margin
+        self.lamda = lamda
+        self.loss_keys = ['loss1', 'loss2', 'loss3', 'loss4']
+
+    def forward(self, anchor, positive, negative, target):
+
+        losses_dict = {}
+
+        distance_positive = (anchor - positive).pow(2).sum(1)  # .pow(.5)
+        distance_negative = (anchor - negative).pow(2).sum(1)  # .pow(.5)
+        distance_target = (anchor - target).pow(2).sum(1)  # .pow(.5)
+
+        loss1 = F.relu(distance_positive - distance_negative + self.margin)
+        loss2 = F.relu(distance_positive - distance_target + self.margin)
+        loss3 = F.relu(distance_positive - distance_negative + 3 * self.margin)
+        loss4 = F.relu(distance_positive - distance_target + 3 * self.margin)
+
+        quadruplet_loss = loss1.mean() + loss2.mean() - self.lamda * (loss3.mean() + loss4.mean())
+
+        losses_dict['loss1'] = loss1.mean()
+        losses_dict['loss2'] = loss2.mean()
+        losses_dict['loss3'] = - self.lamda * loss3.mean()
+        losses_dict['loss4'] = - self.lamda * loss4.mean()
+
+        return quadruplet_loss, losses_dict
+
+
+class QuadrupletLoss4(nn.Module):
+    """
+    Triplet loss
+    Takes embeddings of an anchor sample, a positive sample and a negative sample
+    """
+
+    def __init__(self, margin, lamda=1.0):
+        super(QuadrupletLoss4, self).__init__()
+        self.margin = margin
+        self.lamda = lamda
+        self.loss_keys = ['loss1', 'loss2', 'loss3', 'loss4', 'loss5', 'loss6']
+
+    def forward(self, anchor, positive, negative, target):
+
+        losses_dict = {}
+
+        distance_positive = (anchor - positive).pow(2).sum(1)  # .pow(.5)
+        distance_negative = (anchor - negative).pow(2).sum(1)  # .pow(.5)
+        distance_target = (anchor - target).pow(2).sum(1)  # .pow(.5)
+
+        distance_negtotgt = (negative - target).pow(2).sum(1)  # .pow(.5)
+        distance_tgttoneg = (target - negative).pow(2).sum(1)  # .pow(.5)
+
+        loss1 = F.relu(distance_positive - distance_negative + self.margin)
+        loss2 = F.relu(distance_positive - distance_target + self.margin)
+        loss3 = F.relu(distance_negative - distance_positive - 2 * self.margin)
+        loss4 = F.relu(distance_target - distance_positive - 2 * self.margin)
+        loss5 = F.relu(distance_negtotgt + self.margin)
+        loss6 = F.relu(distance_tgttoneg - 2 * self.margin)
+
+
+        quadruplet_loss = loss1.mean() + \
+                          loss2.mean() + \
+                          loss3.mean() + \
+                          loss4.mean() + \
+                          loss5.mean() + \
+                          loss6.mean()
+
+        losses_dict['loss1'] = loss1.mean()
+        losses_dict['loss2'] = loss2.mean()
+        losses_dict['loss3'] = loss3.mean()
+        losses_dict['loss4'] = loss4.mean()
+        losses_dict['loss5'] = loss5.mean()
+        losses_dict['loss6'] = loss6.mean()
+
+        return quadruplet_loss, losses_dict
+
+
+class KMeanLoss(nn.Module):
+    """
+    Triplet loss
+    Takes embeddings of an anchor sample, a positive sample and a negative sample
+    """
+
+    def __init__(self, margin1, margin2, lamda=0.1):
+        super(KMeanLoss, self).__init__()
         self.margin1 = margin1
         self.margin2 = margin2
         self.lamda = lamda

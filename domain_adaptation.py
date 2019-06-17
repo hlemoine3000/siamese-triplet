@@ -18,8 +18,6 @@ from ml_utils import miners
 from dataset_utils import dataloaders
 import dataset_utils
 import models
-
-
 import utils
 
 
@@ -98,10 +96,9 @@ def main(args):
     plotter = utils.VisdomLinePlotter(env_name=config.visdom.environment_name, port=config.visdom.port)
 
     print('Quadruplet loss training mode.')
-    miner = miners.SemihardNegativeQuadrupletSelector(parameters['margin'])
+    miner = miners.SemihardNegativeTargetQuadrupletSelector(parameters['margin'])
 
-    loss = losses.QuadrupletLoss3(config.hyperparameters.margin,
-                                  config.hyperparameters.margin2,
+    loss = losses.QuadrupletLoss4(config.hyperparameters.margin,
                                   lamda=config.hyperparameters.lamda)
 
     trainer = Quadruplet_Trainer(model,

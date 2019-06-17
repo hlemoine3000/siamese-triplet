@@ -180,7 +180,7 @@ class Quadruplet_Trainer(object):
             target_batch = target_batch.to(self.device)
             target_embeddings = self.model.forward(target_batch)
 
-            quadruplets = self.miner.get_quadruplets(source_embeddings.cpu(), target_embeddings, source_labels)
+            quadruplets = self.miner.get_quadruplets(source_embeddings.cpu(), target_embeddings.cpu(), source_labels)
 
             a = source_embeddings[quadruplets[:, 0]]
             p = source_embeddings[quadruplets[:, 1]]

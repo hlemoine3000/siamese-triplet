@@ -1,6 +1,7 @@
 {
   "name": "config",
   "version": "1.0.0",
+  "experiment": "COXvideo3_finetune",
 
 
   "train_mode": {
@@ -53,8 +54,9 @@
     "model_arch": "resnet50",
     "pretrained_imagenet": false,
     "checkpoint": true,
-    "checkpoint_path2": "/export/livia/data/lemoineh/torch_facetripletloss/models/TripletLossPlots6/model_199.pth",
-    "checkpoint_path": "/export/livia/data/lemoineh/torch_facetripletloss/models/COXvideo2_finetune/model_259.pth",
+    "checkpoint_path": "/export/livia/data/lemoineh/torch_facetripletloss/models/TripletLossPlots6/model_199.pth",
+    "temp1_checkpoint_path": "/export/livia/data/lemoineh/torch_facetripletloss/models/COXvideo2_finetune/model_259.pth",
+    "temp2_checkpoint_path": "/export/livia/data/lemoineh/torch_facetripletloss/models/TripletLossPlots6/model_199.pth",
     "embedding_size": 128
   },
 
@@ -66,7 +68,7 @@
     "people_per_batch": 40,
 
     "optimizer": "SGD",
-    "learning_rate": 0.0004,
+    "learning_rate": 0.0005,
     "learning_rate_decay_epochs": 4,
     "learning_rate_decay_factor": 0.98,
     "weight_decay": 2e-4,
@@ -78,7 +80,7 @@
   },
 
   "visdom": {
-    "environment_name": "COXvideo2tovideo3_finetune",
+    "environment_name": "COXvideo3_finetune",
     "port": 8097,
     "log_interval": 5
   }

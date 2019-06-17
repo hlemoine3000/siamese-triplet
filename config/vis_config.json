@@ -16,8 +16,14 @@
     },
 
     "coxs2v": {
+
+      "video_list": ["video2", "video3"],
+      "subject_list": ["20110318_0001", "20110318_0002", "20110318_0003", "20110318_0004", "20110318_0005"],
+      "video_only": false,
+
       "still_dir": "/export/livia/data/lemoineh/COX-S2V/COX-S2V-Still-MTCNN160",
 
+      "video_dir": "/export/livia/data/lemoineh/COX-S2V/COX-S2V-Video-MTCNN160",
       "video1_dir": "/export/livia/data/lemoineh/COX-S2V/COX-S2V-Video-MTCNN160/video1",
       "video2_dir": "/export/livia/data/lemoineh/COX-S2V/COX-S2V-Video-MTCNN160/video2",
       "video3_dir": "/export/livia/data/lemoineh/COX-S2V/COX-S2V-Video-MTCNN160/video3",
@@ -36,44 +42,18 @@
     }
   },
 
-  "hyperparameters": {
-
-    "margin": 0.2,
-    "margin2": 0.3,
-    "lamda": 0.1,
-
-    "n_epochs": 1000,
-    "image_size": 160,
-    "images_per_person": 5,
-    "people_per_batch": 20,
-
-    "optimizer": "SGD",
-    "learning_rate": 0.0005,
-    "learning_rate_decay_epochs": 4,
-    "learning_rate_decay_factor": 0.99,
-    "weight_decay": 2e-4,
-    "moving_average_decay": 0.9999,
-
-    "val_far": 1e-2,
-
-    "triplet_swap": true,
-    "random_crop": false,
-    "random_flip": false
-  },
-
   "model": {
+    "image_size": 160,
     "model_arch": "resnet50",
     "pretrained_imagenet": false,
     "checkpoint": true,
-    "checkpoint_path2": "/export/livia/data/lemoineh/torch_facetripletloss/models/COXvideo2_finetune/model_259.pth",
-    "checkpoint_path": "/export/livia/data/lemoineh/torch_facetripletloss/models/TripletLossPlots6/model_199.pth",
+    "checkpoint_path": "/export/livia/data/lemoineh/torch_facetripletloss/models/COXvideo2_finetune/model_259.pth",
+    "checkpoint_path2": "/export/livia/data/lemoineh/torch_facetripletloss/models/TripletLossPlots6/model_199.pth",
     "embedding_size": 128
   },
 
   "embeddings_visualisation": {
-    "num_class": 5,
-    "num_sample_per_class": 10,
-
+    "max_sample_per_class": 10,
     "tsne":{
       "perplexity": 30
     }

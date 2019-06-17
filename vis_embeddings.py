@@ -15,7 +15,7 @@ from sklearn.manifold import TSNE
 
 import utils
 import models
-from dataset_utils import dataloaders
+from dataset_utils import dataset
 from utils.plotter import VisdomScatterPlotter
 
 
@@ -57,24 +57,22 @@ if __name__ == '__main__':
 
     # Data transform
     data_transform = transforms.Compose([
-        transforms.Resize((config.hyperparameters.image_size, config.hyperparameters.image_size), interpolation=1),
+        transforms.Resize((config.model.image_size, config.model.image_size), interpolation=1),
         transforms.ToTensor()
     ])
 
-    # Get data loaders
-    if args.all:
-        args.vggface2 = True
-        args.lfw = True
-        args.cox_video1 = True
-        args.cox_video2 = True
-        args.cox_video3 = True
-        args.cox_video4 = True
+    vis_dataset = dataset.DatasetS2V_from_subject(config.dataset.coxs2v.still_dir,
+                                                  config.dataset.coxs2v.video_dir,
+                                                  config.dataset.coxs2v.video_list,
+                                                  config.dataset.coxs2v.subject_list,
+                                                  data_transform,
+                                                  max_samples_per_subject=config.embeddings_visualisation.max_sample_per_class,
+                                                  video_only=config.dataset.coxs2v.video_only)
 
-    if args.all_cox:
-        args.cox_video1 = True
-        args.cox_video2 = True
-        args.cox_video3 = True
-        args.cox_video4 = True
+    vis_dataloader = torch.utils.data.DataLoader(vis_dataset,
+                                                 num_workers=2,
+                                                 batch_size=20)
+
 
     # Load model
     print('Loading from checkpoint {}'.format(config.model.checkpoint_path))
@@ -87,18 +85,6 @@ if __name__ == '__main__':
     model = model.to(device)
     model.eval()
 
-    data_loaders_list = dataloaders.Get_TrainDataloaders(config,
-                                                         data_transform,
-                                                         config.embeddings_visualisation.num_class,
-                                                         config.embeddings_visualisation.num_sample_per_class,
-                                                         [0],
-                                                         nrof_folds,
-                                                         is_vggface2=False,
-                                                         is_cox_video1=False,
-                                                         is_cox_video2=True,
-                                                         is_cox_video3=False,
-                                                         is_cox_video4=False)
-
     plotter = utils.VisdomLinePlotter(env_name=config.visdom.environment_name, port=config.visdom.port)
 
     # Launch embeddings extraction
@@ -106,16 +92,10 @@ if __name__ == '__main__':
     label_array = []
     textlabels = []
 
-    tbar = tqdm.tqdm(data_loaders_list)
     with torch.no_grad():
-        for name, data_loader in tbar:
-
-            print('\nExtracting embeddings on {}'.format(name))
-
-            #extract one batch of each datasets
-            images_batch, label_batch = next(iter(data_loader))
-
+        for images_batch, label_batch in vis_dataloader:
             # Transfer to GPU
+
             image_batch = images_batch.to(device, non_blocking=True)
 
             emb = model.forward(image_batch)
@@ -123,21 +103,14 @@ if __name__ == '__main__':
             embeddings.append(emb)
             label_array.append(deepcopy(label_batch))
 
-            embeddings = torch.cat(embeddings, 0).cpu().numpy()
-            label_array = torch.cat(label_array, 0).cpu().numpy()
+        embeddings = torch.cat(embeddings, 0).cpu().numpy()
+        label_array = torch.cat(label_array, 0).cpu().numpy()
 
-            # test label in dataset
-            for label in label_array:
-                for class_name, idx in data_loader.dataset.class_to_idx.items():
-                    if idx == label:
-                        textlabels.append(class_name)
-
-    X_embedded = TSNE(n_components=2, perplexity=20.0,
-                 early_exaggeration=12.0, learning_rate=200.0, n_iter=10000,
-                 n_iter_without_progress=300, min_grad_norm=1e-7,
+    X_embedded = TSNE(n_components=2, perplexity=30.0,
+                 early_exaggeration=12.0, learning_rate=200.0, n_iter=20000,
+                 n_iter_without_progress=1000, min_grad_norm=1e-7,
                  metric="euclidean", init="random", verbose=1,
                  random_state=None, method='exact', angle=0.2).fit_transform(embeddings)
-    legends = utils.unique(textlabels)
 
     my_plot = VisdomScatterPlotter(env_name=config.visdom.environment_name,
                                    port=config.visdom.port)
@@ -146,6 +119,6 @@ if __name__ == '__main__':
     my_plot.plot('Embeddings Visualisation TSNE',
                  X_embedded,
                  label_array,
-                 legends=legends)
+                 legends=vis_dataloader.dataset.classes)
 
     print('Visualisation completed.')

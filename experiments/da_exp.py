@@ -84,7 +84,7 @@ def Get_DADataloaders(exp_name, config, data_transform):
         target_loader = coxs2v.get_coxs2v_trainset(config.dataset.coxs2v.still_dir,
                                                    config.dataset.coxs2v.video2_dir,
                                                    config.dataset.coxs2v.video2_pairs,
-                                                   val_folds,
+                                                   train_folds,
                                                    nrof_folds,
                                                    data_transform,
                                                    config.hyperparameters.people_per_batch,
@@ -100,6 +100,33 @@ def Get_DADataloaders(exp_name, config, data_transform):
                                                             is_cox_video1=False,
                                                             is_cox_video2=True,
                                                             is_cox_video3=False,
+                                                            is_cox_video4=False)
+
+    elif exp_name == 'da_vggface2_to_video3':
+        source_loader = vggface2.get_vggface2_trainset(config.dataset.vggface2.train_dir,
+                                                       data_transform,
+                                                       config.hyperparameters.people_per_batch,
+                                                       config.hyperparameters.images_per_person)
+
+        target_loader = coxs2v.get_coxs2v_trainset(config.dataset.coxs2v.still_dir,
+                                                   config.dataset.coxs2v.video3_dir,
+                                                   config.dataset.coxs2v.video3_pairs,
+                                                   train_folds,
+                                                   nrof_folds,
+                                                   data_transform,
+                                                   config.hyperparameters.people_per_batch,
+                                                   config.hyperparameters.images_per_person)
+
+        test_loaders_list = dataloaders.Get_TestDataloaders(config,
+                                                            data_transform,
+                                                            test_batch_size,
+                                                            test_folds,
+                                                            nrof_folds,
+                                                            is_vggface2=False,
+                                                            is_lfw=True,
+                                                            is_cox_video1=False,
+                                                            is_cox_video2=False,
+                                                            is_cox_video3=True,
                                                             is_cox_video4=False)
 
     else:

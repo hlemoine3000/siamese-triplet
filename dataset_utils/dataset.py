@@ -74,7 +74,7 @@ class PairsDatasetS2V(data.Dataset):
                  transform: transforms,
                  fold_list: list,
                  num_folds: int=10,
-                 preload: bool=True):
+                 preload: bool=False):
 
 
 
@@ -211,8 +211,10 @@ class DatasetS2V(data.Dataset):
 
         self.preloaded = False
         if preload:
+            print('Preloading images...')
             self.images = {}
-            for path, lbl in self.samples:
+            tbar = tqdm.tqdm(self.samples)
+            for path, lbl in tbar:
                 img = Image.open(path)
                 self.images[path] = img.copy()
             self.preloaded = True
@@ -235,6 +237,77 @@ class DatasetS2V(data.Dataset):
             sample = self.images[path]
         else:
             sample = default_loader(path)
+
+        if self.transform:
+            sample = self.transform(sample)
+
+        return sample, label
+
+
+class DatasetS2V_from_subject(data.Dataset):
+
+    def __init__(self,
+                 still_dir,
+                 video_dir,
+                 video_list,
+                 subject_list,
+                 transform: transforms,
+                 max_samples_per_subject=10,
+                 video_only=False):
+
+        self.transform = transform
+
+        image_path_list = []
+        labels_list = []
+        samples = []
+
+        for video_view in video_list:
+            for subject in subject_list:
+
+                subject_video_path = os.path.join(video_dir, video_view, subject)
+                video_image_paths = utils.get_image_paths(subject_video_path)
+                if len(video_image_paths) > max_samples_per_subject:
+                    video_image_paths = video_image_paths[0:max_samples_per_subject]
+
+                label = subject + '_' + video_view
+                labels_list += [label] * len(video_image_paths)
+
+                if not video_only:
+                    label = subject + '_still'
+                    if label not in labels_list: # No need to add still image a second time.
+                        video_image_paths.append(os.path.join(still_dir, subject + '_0000.JPG'))
+                        labels_list.append(label)
+
+                image_path_list += video_image_paths
+
+        classes = utils.unique(labels_list)
+        class_to_idx = {key: tgt for (tgt, key) in enumerate(classes)}
+
+        for i, image_path in enumerate(image_path_list):
+
+            item = (image_path, class_to_idx[labels_list[i]])
+            samples.append(item)
+
+        self.classes = classes
+        self.class_to_idx = class_to_idx
+        self.samples = samples
+        self.targets = [s[1] for s in samples]
+
+    def __len__(self):
+        return len(self.samples)
+
+    def __getitem__(self, idx):
+
+        """
+                Args:
+                    index (int): Index
+
+                Returns:
+                    tuple: (sample, target) where target is class_index of the target class.
+                """
+
+        path, label = self.samples[idx]
+        sample = default_loader(path)
 
         if self.transform:
             sample = self.transform(sample)

@@ -31,7 +31,7 @@ def Get_PairsImageFolderLoader(data_dir,
                                batch_size,
                                preload=False):
 
-    num_workers = 2 if preload else 4
+    num_workers = 2 if preload else 8
 
     test_set = dataset_utils.dataset.PairsDataset(data_dir,
                                      pairs_file,
@@ -75,42 +75,46 @@ def Get_TestDataloaders(config,
     # COXS2V dataset
     if is_cox_video1:
         data_loader = coxs2v.get_coxs2v_testset(config.dataset.coxs2v.still_dir,
-                                         config.dataset.coxs2v.video1_dir,
-                                         config.dataset.coxs2v.video1_pairs,
-                                         folds,
-                                         nrof_folds,
-                                         data_transform,
-                                         batch_size)
+                                                config.dataset.coxs2v.video1_dir,
+                                                config.dataset.coxs2v.video1_pairs,
+                                                folds,
+                                                nrof_folds,
+                                                data_transform,
+                                                batch_size,
+                                                preload=True)
         test_loaders_list.append(('cox_video1', data_loader))
 
     if is_cox_video2:
         data_loader = coxs2v.get_coxs2v_testset(config.dataset.coxs2v.still_dir,
-                                         config.dataset.coxs2v.video2_dir,
-                                         config.dataset.coxs2v.video2_pairs,
-                                         folds,
-                                         nrof_folds,
-                                         data_transform,
-                                         batch_size)
+                                                config.dataset.coxs2v.video2_dir,
+                                                config.dataset.coxs2v.video2_pairs,
+                                                folds,
+                                                nrof_folds,
+                                                data_transform,
+                                                batch_size,
+                                                preload=True)
         test_loaders_list.append(('cox_video2', data_loader))
 
     if is_cox_video3:
         data_loader = coxs2v.get_coxs2v_testset(config.dataset.coxs2v.still_dir,
-                                         config.dataset.coxs2v.video3_dir,
-                                         config.dataset.coxs2v.video3_pairs,
-                                         folds,
-                                         nrof_folds,
-                                         data_transform,
-                                         batch_size)
+                                                config.dataset.coxs2v.video3_dir,
+                                                config.dataset.coxs2v.video3_pairs,
+                                                folds,
+                                                nrof_folds,
+                                                data_transform,
+                                                batch_size,
+                                                preload=True)
         test_loaders_list.append(('cox_video3', data_loader))
 
     if is_cox_video4:
         data_loader = coxs2v.get_coxs2v_testset(config.dataset.coxs2v.still_dir,
-                                         config.dataset.coxs2v.video4_dir,
-                                         config.dataset.coxs2v.video4_pairs,
-                                         folds,
-                                         nrof_folds,
-                                         data_transform,
-                                         batch_size)
+                                                config.dataset.coxs2v.video4_dir,
+                                                config.dataset.coxs2v.video4_pairs,
+                                                folds,
+                                                nrof_folds,
+                                                data_transform,
+                                                batch_size,
+                                                preload=True)
         test_loaders_list.append(('cox_video4', data_loader))
 
     return test_loaders_list

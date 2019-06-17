@@ -38,7 +38,7 @@ class VisdomScatterPlotter(object):
                                                       env=self.env,
                                                       opts=dict(
                                                           title=title_name,
-                                                          legends=legends,
+                                                          legends=[legends],
                                                           markersymbol='dot'
                                                       ))
 
