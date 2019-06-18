@@ -1,8 +1,8 @@
 {
   "name": "config",
   "version": "1.0.0",
-  "experiment2": "da_vggface2_to_video2",
-  "experiment": "da_video2_to_video3",
+  "experiment": "da_vggface2_to_video2",
+  "experiment2": "da_video2_to_video3",
 
   "dataset": {
     "vggface2": {
@@ -76,7 +76,7 @@
   },
 
   "visdom": {
-    "environment_name": "DA_video2_to_video3_L7",
+    "environment_name": "DA_vggface2_to_video2_NOL5L6",
     "port": 8097,
     "log_interval": 5
   }

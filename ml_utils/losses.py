@@ -165,6 +165,7 @@ class QuadrupletLoss4(nn.Module):
         self.margin = margin
         self.lamda = lamda
         self.loss_keys = ['loss1', 'loss2', 'loss3', 'loss4', 'loss5', 'loss6']
+        self.lamda = [1.0, 1.0, 1.0, 1.0, 0.0, 0.0]
 
     def forward(self, anchor, positive, negative, target):
 
@@ -181,23 +182,23 @@ class QuadrupletLoss4(nn.Module):
         loss2 = F.relu(distance_positive - distance_target + self.margin)
         loss3 = F.relu(distance_negative - distance_positive - 2 * self.margin)
         loss4 = F.relu(distance_target - distance_positive - 2 * self.margin)
-        loss5 = F.relu(distance_negtotgt + self.margin)
+        loss5 = F.relu(- distance_negtotgt + self.margin)
         loss6 = F.relu(distance_tgttoneg - 2 * self.margin)
 
 
-        quadruplet_loss = loss1.mean() + \
-                          loss2.mean() + \
-                          loss3.mean() + \
-                          loss4.mean() + \
-                          loss5.mean() + \
-                          loss6.mean()
+        quadruplet_loss = self.lamda[0] * loss1.mean() + \
+                          self.lamda[1] * loss2.mean() + \
+                          self.lamda[2] * loss3.mean() + \
+                          self.lamda[3] * loss4.mean() + \
+                          self.lamda[4] * loss5.mean() + \
+                          self.lamda[5] * loss6.mean()
 
-        losses_dict['loss1'] = loss1.mean()
-        losses_dict['loss2'] = loss2.mean()
-        losses_dict['loss3'] = loss3.mean()
-        losses_dict['loss4'] = loss4.mean()
-        losses_dict['loss5'] = loss5.mean()
-        losses_dict['loss6'] = loss6.mean()
+        losses_dict['loss1'] = self.lamda[0] * loss1.mean()
+        losses_dict['loss2'] = self.lamda[1] * loss2.mean()
+        losses_dict['loss3'] = self.lamda[2] * loss3.mean()
+        losses_dict['loss4'] = self.lamda[3] * loss4.mean()
+        losses_dict['loss5'] = self.lamda[4] * loss5.mean()
+        losses_dict['loss6'] = self.lamda[5] * loss6.mean()
 
         return quadruplet_loss, losses_dict
 
