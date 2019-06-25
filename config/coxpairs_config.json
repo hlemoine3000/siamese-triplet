@@ -1,0 +1,43 @@
+{
+  "name": "config",
+  "version": "1.0.0",
+
+  "num_matches_mismatches": 500,
+
+
+  "dataset": {
+    "vggface2": {
+      "train_dir": "/export/livia/data/lemoineh/vggface2/train_182",
+      "test_dir": "/export/livia/data/lemoineh/vggface2/test_182",
+      "pairs_file": "dataset_utils/pair_files/vggface2_pairs.txt"
+    },
+
+    "lfw": {
+      "test_dir": "/export/livia/data/lemoineh/lfw/lfw_mtcnnpy_160",
+      "pairs_file": "dataset_utils/pair_files/new_lfw_pairs.txt"
+    },
+
+    "coxs2v": {
+      "still_dir": "/export/livia/data/lemoineh/COX-S2V/COX-S2V-Still-MTCNN160",
+
+      "video_list": ["video1", "video2", "video3", "video4"],
+      "video_dir": "/export/livia/data/lemoineh/COX-S2V/COX-S2V-Video-MTCNN160_2",
+      "video1_dir": "/export/livia/data/lemoineh/COX-S2V/COX-S2V-Video-MTCNN160_2/video1",
+      "video2_dir": "/export/livia/data/lemoineh/COX-S2V/COX-S2V-Video-MTCNN160_2/video2",
+      "video3_dir": "/export/livia/data/lemoineh/COX-S2V/COX-S2V-Video-MTCNN160_2/video3",
+      "video4_dir": "/export/livia/data/lemoineh/COX-S2V/COX-S2V-Video-MTCNN160_2/video4",
+
+      "subject_list": "dataset_utils/pair_files/coxs2v/cox_subject_list.txt",
+
+      "video_pairs": "dataset_utils/pair_files/coxs2v",
+      "video1_pairs": "dataset_utils/pair_files/coxs2v/video1_pairs.txt",
+      "video2_pairs": "dataset_utils/pair_files/coxs2v/video2_pairs.txt",
+      "video3_pairs": "dataset_utils/pair_files/coxs2v/video3_pairs.txt",
+      "video4_pairs": "dataset_utils/pair_files/coxs2v/video4_pairs.txt",
+
+      "num_fold": 10
+    }
+
+  }
+
+}

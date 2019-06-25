@@ -53,18 +53,13 @@ def main(args):
     use_cuda = torch.cuda.is_available()
     device = torch.device("cuda:0" if use_cuda else "cpu")
 
-    data_transform = transforms.Compose([
-        transforms.Resize((parameters["image_size"], parameters["image_size"]), interpolation=1),
-        transforms.ToTensor()
-    ])
-
     ###########################
     # SET UP DATALOADERS HERE #
     ###########################
 
     nrof_folds = config.dataset.cross_validation.num_fold
 
-    online_train_loader, test_container = tripletloss_exp.Get_TrainDataloaders(config.experiment, config, data_transform)
+    online_train_loader, test_container = tripletloss_exp.Get_TrainDataloaders(config.experiment, config)
 
     ##########################
     # SET UP DATALOADERS END #

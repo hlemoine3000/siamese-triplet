@@ -88,7 +88,11 @@ class Random_S2VBalancedBatchSampler(BatchSampler):
             batch = []
             chosen_classes_idx = np.random.choice(self.classes, self.num_classes_per_batch, replace=False)
             for i, class_idx in enumerate(chosen_classes_idx):
-                batch.append(np.random.choice(self.class_samples[class_idx], self.samples_per_class, replace=False))
+                if (len(self.class_samples[class_idx]) >= self.samples_per_class):
+                    batch.append(np.random.choice(self.class_samples[class_idx], self.samples_per_class, replace=False))
+                else:
+                    batch.append(np.random.choice(self.class_samples[class_idx], self.samples_per_class, replace=True))
+                    # print('No sufficient samples in {} class.'.format(self.data_source.classes[class_idx]))
 
                 if not self.video_only:
                     # Add still image if not in batch

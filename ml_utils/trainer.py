@@ -159,7 +159,11 @@ class Quadruplet_Trainer(object):
         train_ap_distances = utils.AverageMeter()
         train_an_distances = utils.AverageMeter()
         train_at_distances = utils.AverageMeter()
+
         train_quadruplets = utils.AverageMeter()
+        num_tgt1 = utils.AverageMeter()
+        num_tgt2 = utils.AverageMeter()
+        num_tgt3 = utils.AverageMeter()
 
         # Training
         self.scheduler.step()
@@ -180,7 +184,7 @@ class Quadruplet_Trainer(object):
             target_batch = target_batch.to(self.device)
             target_embeddings = self.model.forward(target_batch)
 
-            quadruplets = self.miner.get_quadruplets(source_embeddings.cpu(), target_embeddings.cpu(), source_labels)
+            quadruplets, num_target_type = self.miner.get_quadruplets(source_embeddings.cpu(), target_embeddings.cpu(), source_labels)
 
             a = source_embeddings[quadruplets[:, 0]]
             p = source_embeddings[quadruplets[:, 1]]
@@ -205,7 +209,11 @@ class Quadruplet_Trainer(object):
             train_ap_distances.append(ap_distances.mean().item())
             train_an_distances.append(an_distances.mean().item())
             train_at_distances.append(at_distances.mean().item())
+
             train_quadruplets.append(quadruplets.size(0))
+            num_tgt1.append(num_target_type[0])
+            num_tgt2.append(num_target_type[1])
+            num_tgt3.append(num_target_type[2])
 
             if not (i + 1) % self.log_interval or (i + 1) == loader_length:
 
@@ -219,8 +227,16 @@ class Quadruplet_Trainer(object):
                                   self.step, train_ap_distances.last_avg)
                 self.plotter.plot('distance', 'step', 'at', 'Pairwise mean distance',
                                   self.step, train_at_distances.last_avg)
-                self.plotter.plot('triplet number', 'step', 'train', 'Triplet Mining',
+
+                self.plotter.plot('quadruplet number', 'step', 'num_quadruplet', 'Quadruplet Mining',
                                   self.step, train_quadruplets.last_avg)
+
+                self.plotter.plot('quadruplet number', 'step', 'num_tgt1', 'Quadruplet Mining',
+                                  self.step, num_tgt1.last_avg)
+                self.plotter.plot('quadruplet number', 'step', 'num_tgt2', 'Quadruplet Mining',
+                                  self.step, num_tgt2.last_avg)
+                self.plotter.plot('quadruplet number', 'step', 'num_tgt3', 'Quadruplet Mining',
+                                  self.step, num_tgt3.last_avg)
 
             self.step += 1
         tbar.set_description('Step {} - Loss: {:.4f}'.format(self.step, train_losses.avg))

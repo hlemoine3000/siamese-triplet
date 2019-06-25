@@ -114,10 +114,9 @@ def get_subject_list(pairs_path):
 
         for line in f.readlines()[1:]:
             pair = line.strip().split()
+            subject_list.append(pair[0])
 
-            if len(pair) == 3:
-                if pair[0] not in subject_list:
-                    subject_list.append(pair[0])
+        subject_list = unique(subject_list)
 
     return subject_list, int(nb_fold)
 

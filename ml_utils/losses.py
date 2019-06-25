@@ -160,12 +160,13 @@ class QuadrupletLoss4(nn.Module):
     Takes embeddings of an anchor sample, a positive sample and a negative sample
     """
 
-    def __init__(self, margin, lamda=1.0):
+    def __init__(self, margin, lamda, margin_factor=2):
         super(QuadrupletLoss4, self).__init__()
         self.margin = margin
         self.lamda = lamda
         self.loss_keys = ['loss1', 'loss2', 'loss3', 'loss4', 'loss5', 'loss6']
-        self.lamda = [1.0, 1.0, 1.0, 1.0, 0.0, 0.0]
+        self.lamda = lamda
+        self.margin_factor = margin_factor
 
     def forward(self, anchor, positive, negative, target):
 
@@ -180,10 +181,10 @@ class QuadrupletLoss4(nn.Module):
 
         loss1 = F.relu(distance_positive - distance_negative + self.margin)
         loss2 = F.relu(distance_positive - distance_target + self.margin)
-        loss3 = F.relu(distance_negative - distance_positive - 2 * self.margin)
-        loss4 = F.relu(distance_target - distance_positive - 2 * self.margin)
-        loss5 = F.relu(- distance_negtotgt + self.margin)
-        loss6 = F.relu(distance_tgttoneg - 2 * self.margin)
+        loss3 = F.relu(distance_negative - distance_positive - self.margin_factor * self.margin)
+        loss4 = F.relu(distance_target - distance_positive - self.margin_factor * self.margin)
+        loss5 = F.relu(-distance_negtotgt + self.margin)
+        loss6 = F.relu(distance_tgttoneg - self.margin_factor * self.margin)
 
 
         quadruplet_loss = self.lamda[0] * loss1.mean() + \

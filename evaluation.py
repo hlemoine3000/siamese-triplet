@@ -146,12 +146,19 @@ if __name__ == '__main__':
     test_loaders_list = Get_TestDataloaders(config,
                                             data_transform,
                                             batch_size,
+                                            test_folds,
+                                            nrof_folds,
                                             is_vggface2=args.vggface2,
                                             is_lfw=args.lfw,
                                             is_cox_video1=args.cox_video1,
                                             is_cox_video2=args.cox_video2,
                                             is_cox_video3=args.cox_video3,
                                             is_cox_video4=args.cox_video4)
+
+    if not test_loaders_list:
+        print('No datasets selected for evaluation.')
+        print('Evaluation terminated.')
+        exit(0)
 
     # Load model
     print('Loading from checkpoint {}'.format(config.model.checkpoint_path))

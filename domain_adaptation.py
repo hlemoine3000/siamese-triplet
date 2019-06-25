@@ -9,14 +9,11 @@ import json
 import torch
 import torch.optim as optim
 from torch.optim import lr_scheduler
-from torchvision import transforms
 
 from experiments import da_exp
 from ml_utils.trainer import Quadruplet_Trainer
 from ml_utils import losses
 from ml_utils import miners
-from dataset_utils import dataloaders
-import dataset_utils
 import models
 import utils
 
@@ -29,9 +26,11 @@ def parse_arguments(argv):
 
     return parser.parse_args(argv)
 
+
 def path_leaf(path):
     head, tail = ntpath.split(path)
     return tail or ntpath.basename(head)
+
 
 def main(args):
 
@@ -39,7 +38,6 @@ def main(args):
     print('CONFIGURATION:\t{}'.format(args.config))
     with open(args.config) as json_config_file:
         config = utils.AttrDict(json.load(json_config_file))
-    parameters = config.hyperparameters
 
     # Set up output directory
     # subdir = datetime.strftime(datetime.now(), '%Y%m%d-%H%M%S')
@@ -47,8 +45,10 @@ def main(args):
     model_dir = os.path.join(os.path.expanduser(config.output.output_dir), subdir)
     if not os.path.isdir(model_dir):  # Create the model directory if it doesn't exist
         os.makedirs(model_dir)
-    else:
-        raise Exception('Environment name {} already taken.'.format(subdir))
+        print('Model saved at {}'.format(model_dir))
+    # else:
+    #     raise Exception('Environment name {} already taken.'.format(subdir))
+
     config_filename = path_leaf(args.config)
     copyfile(args.config, os.path.join(model_dir, config_filename))
 
@@ -56,15 +56,9 @@ def main(args):
     use_cuda = torch.cuda.is_available()
     device = torch.device("cuda:0" if use_cuda else "cpu")
 
-    data_transform = transforms.Compose([
-        transforms.Resize((parameters["image_size"], parameters["image_size"]), interpolation=1),
-        transforms.ToTensor()
-    ])
-
     nrof_folds = config.dataset.cross_validation.num_fold
     source_loader, target_loader, test_loaders_list = da_exp.Get_DADataloaders(config.experiment,
-                                                                               config,
-                                                                               data_transform)
+                                                                               config)
 
     #Set up training model
     print('Building training model')
@@ -82,9 +76,9 @@ def main(args):
                               embedding_size=embedding_size,
                               imgnet_pretrained=config.model.pretrained_imagenet)
 
-    optimizer = optim.SGD(model.parameters(), lr=parameters['learning_rate'], momentum=0.9, nesterov=True, weight_decay=2e-4)
+    optimizer = optim.SGD(model.parameters(), lr=config.hyperparameters.learning_rate, momentum=0.9, nesterov=True, weight_decay=2e-4)
 
-    scheduler = lr_scheduler.ExponentialLR(optimizer, parameters['learning_rate_decay_factor'])
+    scheduler = lr_scheduler.ExponentialLR(optimizer, config.hyperparameters.learning_rate_decay_factor)
 
     if config.model.checkpoint:
         model.load_state_dict(checkpoint['model_state_dict'])
@@ -96,10 +90,13 @@ def main(args):
     plotter = utils.VisdomLinePlotter(env_name=config.visdom.environment_name, port=config.visdom.port)
 
     print('Quadruplet loss training mode.')
-    miner = miners.SemihardNegativeTargetQuadrupletSelector(parameters['margin'])
+    miner = miners.FunctionNegativeTargetQuadrupletSelector(config.hyperparameters.margin,
+                                                            config.hyperparameters.lamda,
+                                                            margin_factor=config.hyperparameters.margin_factor)
 
     loss = losses.QuadrupletLoss4(config.hyperparameters.margin,
-                                  lamda=config.hyperparameters.lamda)
+                                  config.hyperparameters.lamda,
+                                  margin_factor=config.hyperparameters.margin_factor)
 
     trainer = Quadruplet_Trainer(model,
                                  miner,
@@ -108,13 +105,13 @@ def main(args):
                                  scheduler,
                                  device,
                                  plotter,
-                                 parameters['margin'],
+                                 config.hyperparameters.margin,
                                  config.model.embedding_size,
                                  config.visdom.log_interval)
 
     # Loop over epochs
     print('Training Launched.')
-    for epoch in range(start_epoch, parameters['n_epochs']):
+    for epoch in range(start_epoch, config.hyperparameters.n_epochs):
 
         # Validation
         for test_name, test_loader in test_loaders_list:
@@ -125,7 +122,8 @@ def main(args):
                              val_far=config.hyperparameters.val_far)
 
         # Training
-        print('\nTrain Epoch {}'.format(epoch))
+        print('\nExperimentation {}'.format(config.experiment))
+        print('Train Epoch {}'.format(epoch))
         trainer.Train_Epoch(source_loader, target_loader)
 
         # Save model

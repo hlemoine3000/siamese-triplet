@@ -248,10 +248,12 @@ class FunctionNegativeTargetQuadrupletSelector(TripletSelector):
     Target samples are chosen ramdomly
     """
 
-    def __init__(self, margin, cpu=True):
+    def __init__(self, margin, lamda, margin_factor=2, cpu=False):
         super(FunctionNegativeTargetQuadrupletSelector, self).__init__()
         self.cpu = cpu
         self.margin = margin
+        self.margin_factor = margin_factor
+        self.lamda = lamda
 
     def get_quadruplets(self, source_embeddings, target_embeddings, source_labels):
         if self.cpu:
@@ -263,6 +265,7 @@ class FunctionNegativeTargetQuadrupletSelector(TripletSelector):
         dist_split_idx = source_labels.size(0)
 
         num_target = target_embeddings.size(0)
+        num_target_type = [0, 0, 0]
 
         quadruplets = []
 
@@ -277,14 +280,42 @@ class FunctionNegativeTargetQuadrupletSelector(TripletSelector):
 
             ap_distances = distance_matrix[anchor_positives[:, 0], anchor_positives[:, 1]]
             for anchor_positive, ap_distance in zip(anchor_positives, ap_distances):
-                loss_values1 = ap_distance - distance_matrix[torch.LongTensor(np.array([anchor_positive[0]])), torch.LongTensor(negative_indices)] + self.margin
-                loss_values3 = ap_distance - distance_matrix[anchor_positive[0], dist_split_idx:] + 3 * self.margin
 
-                loss_values1 = loss_values1.data.cpu().numpy()
-                loss_values3 = loss_values3.data.cpu().numpy()
+                negative_distance_matrix = distance_matrix[torch.LongTensor(np.array([anchor_positive[0]])), torch.LongTensor(negative_indices)]
+                target_distance_matrix = distance_matrix[anchor_positive[0], dist_split_idx:]
 
-                hard_negative = semihard_negative(loss_values1, self.margin)
-                hard_target = hardest_negative(loss_values3)
+                # loss1 = F.relu(distance_positive - distance_negative + self.margin)
+                loss1_values = self.lamda[0] * (ap_distance - negative_distance_matrix + self.margin)
+
+                # loss2 = F.relu(distance_positive - distance_target + self.margin)
+                loss2_values = self.lamda[1] * (ap_distance - target_distance_matrix + self.margin)
+
+                # loss3 = F.relu(distance_negative - distance_positive - 2 * self.margin)
+                loss3_values = self.lamda[2] * (negative_distance_matrix - ap_distance - self.margin_factor * self.margin)
+
+                # loss4 = F.relu(distance_target - distance_positive - 2 * self.margin)
+                loss4_values = self.lamda[3] * (target_distance_matrix - ap_distance - self.margin_factor * self.margin)
+
+                loss1_values = loss1_values.data.cpu().numpy()
+                loss2_values = loss2_values.data.cpu().numpy()
+                loss3_values = loss3_values.data.cpu().numpy()
+                loss4_values = loss4_values.data.cpu().numpy()
+
+                hard_negative = semihard_negative(loss1_values, self.margin)
+
+                hard_target2 = semihard_negative(loss2_values, self.margin)
+                hard_target3 = hardest_negative(loss3_values)
+                hard_target4 = hardest_negative(loss4_values)
+                hard_target_list = [hard_target2, hard_target3, hard_target4]
+
+                # Balancing the target selection between the three possible hard_target
+                hard_target = None
+                target_indexes = sorted(range(len(num_target_type)), key=lambda k: num_target_type[k])
+                for tgt_idx in target_indexes:
+                    hard_target = hard_target_list[tgt_idx]
+                    if hard_target is not None:
+                        num_target_type[tgt_idx] += 1
+                        break
 
                 if hard_negative is not None:
 
@@ -297,12 +328,13 @@ class FunctionNegativeTargetQuadrupletSelector(TripletSelector):
                     quadruplet = [anchor_positive[0], anchor_positive[1], hard_negative, hard_target]
 
                     quadruplets.append(quadruplet)
+
                 elif hard_target is not None:
 
-                    # Choose a random negative sample
-                    hard_negative = np.random.choice(negative_indices)
-                    quadruplet = [anchor_positive[0], anchor_positive[1], hard_negative, hard_target]
-                    quadruplets.append(quadruplet)
+                        # Choose a random negative sample
+                        hard_negative = np.random.choice(negative_indices)
+                        quadruplet = [anchor_positive[0], anchor_positive[1], hard_negative, hard_target]
+                        quadruplets.append(quadruplet)
 
         # Give at least one sample
         if len(quadruplets) == 0:
@@ -313,7 +345,7 @@ class FunctionNegativeTargetQuadrupletSelector(TripletSelector):
 
         quadruplets = np.array(quadruplets)
 
-        return torch.LongTensor(quadruplets)
+        return torch.LongTensor(quadruplets), num_target_type
 
 
 def HardestNegativeTripletSelector(margin, cpu=False): return FunctionNegativeTripletSelector(margin=margin,

@@ -1,10 +1,9 @@
 {
   "name": "config",
   "version": "1.0.0",
-  "experiment2": "da_vggface2_to_video2",
-  "experiment": "da_video2_to_video3",
 
   "dataset": {
+
     "vggface2": {
       "train_dir": "/export/livia/data/lemoineh/vggface2/train_182",
       "test_dir": "/export/livia/data/lemoineh/vggface2/test_182",
@@ -37,35 +36,26 @@
     }
   },
 
-  "output": {
-    "output_dir": "/export/livia/data/lemoineh/torch_facetripletloss/models",
-    "save_interval": 10
-  },
-
   "model": {
     "model_arch": "resnet50",
     "pretrained_imagenet": false,
     "checkpoint": true,
-    "checkpoint_path2": "/export/livia/data/lemoineh/torch_facetripletloss/models/COXfinetune2/model_169.pth",
-    "checkpoint_path": "/export/livia/data/lemoineh/torch_facetripletloss/models/TripletLossPlots6/model_199.pth",
+    "checkpoint_path": "/export/livia/data/lemoineh/torch_facetripletloss/models/COXvideo2_finetune/model_209.pth",
+    "checkpoint_path2": "/export/livia/data/lemoineh/torch_facetripletloss/models/TripletLossPlots6/model_199.pth",
     "embedding_size": 128
   },
 
   "hyperparameters": {
-
-    "margin": 1.0,
-    "margin_factor": 1.5,
-    "lamda": [1.0, 1.0, 1.0, 1.0, 1.0, 1.0],
-
+    "margin": 0.2,
     "n_epochs": 1000,
     "image_size": 160,
     "images_per_person": 5,
     "people_per_batch": 20,
 
     "optimizer": "SGD",
-    "learning_rate": 0.0005,
+    "learning_rate": 0.001,
     "learning_rate_decay_epochs": 4,
-    "learning_rate_decay_factor": 0.98,
+    "learning_rate_decay_factor": 0.99,
     "weight_decay": 2e-4,
     "moving_average_decay": 0.9999,
 
@@ -73,13 +63,16 @@
 
     "triplet_swap": true,
     "random_crop": false,
-    "random_hor_flip": true
+    "random_flip": false
   },
 
-  "visdom": {
-    "environment_name": "DA3_video2_to_video3_L123456",
-    "port": 8097,
-    "log_interval": 5
+  "embeddings_visualisation": {
+    "num_class": 5,
+    "num_sample_per_class": 10,
+
+    "tsne":{
+      "perplexity": 30
+    }
   }
 
 }
