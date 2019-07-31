@@ -28,19 +28,34 @@ class VisdomScatterPlotter(object):
     def __init__(self, env_name='main', port=8097):
         self.viz = Visdom(port=port)
         self.env = env_name
-        self.plots = {}
 
     def plot(self, title_name, x, y, legends=None):
-        if title_name not in self.plots:
 
-            self.plots[title_name] = self.viz.scatter(X=x,
-                                                      Y=y,
-                                                      env=self.env,
-                                                      opts=dict(
-                                                          title=title_name,
-                                                          legends=[legends],
-                                                          markersymbol='dot'
-                                                      ))
+        self.viz.scatter(X=x,
+                         Y=y,
+                         env=self.env,
+                         opts=dict(
+                             title=title_name,
+                             legends=[legends],
+                             markersymbol='dot'
+                         ))
 
-        else:
-            print('nothing')
+
+class VisdomHeatmap():
+    """Plots to Visdom"""
+
+    def __init__(self, env_name='main', port=8097):
+        self.viz = Visdom(port=port)
+        self.env = env_name
+
+    def plot(self, title_name, x, class_list):
+
+        self.viz.heatmap(
+            X=np.flipud(x),
+            env=self.env,
+            opts=dict(
+                title=title_name,
+                columnnames=class_list,
+                rownames=list(reversed(class_list))
+            )
+        )

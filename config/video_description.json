@@ -1,13 +1,15 @@
 {
   "name": "config",
   "version": "1.0.0",
+  "experiment": "BBT_trackfinetune",
 
-  "experiment2": "da_vggface2_to_video3",
-  "experiment": "da_video4_to_video1",
-  "mode": "dualtriplet",
-  "mode2": "supervised_dualtriplet",
+  "train_mode": {
+    "mode": "tripletloss",
+    "miner": "semihardtriplets"
+  },
 
   "dataset": {
+
     "vggface2": {
       "train_dir": "/export/livia/data/lemoineh/vggface2/train_182",
       "test_dir": "/export/livia/data/lemoineh/vggface2/test_182",
@@ -33,6 +35,12 @@
       "video4_pairs": "dataset_utils/pair_files/coxs2v/video4_pairs.txt"
     },
 
+    "bbt": {
+      "movie_path": "/export/livia/data/lemoineh/BBT/bbts01e01.mkv",
+      "annotation_path": "/export/livia/data/lemoineh/CVPR2013_PersonID_data/bbt_s01e01_facetracks.mat",
+      "num_frame": 32000
+    },
+
     "cross_validation": {
       "num_fold": 10,
       "num_train_folds": 2,
@@ -41,39 +49,32 @@
   },
 
   "output": {
-    "output_dir": "/export/livia/data/lemoineh/torch_facetripletloss/models",
-    "save_interval": 10
+    "output_dir": "/export/livia/data/lemoineh/torch_facetripletloss/roi",
+    "video_dir": "/export/livia/data/lemoineh/video/",
+    "save_interval": 3
   },
 
   "model": {
     "model_arch": "resnet50",
-    "pretrained_imagenet": false,
+    "pretrained_imagenet": true,
     "checkpoint": true,
-    "checkpoint_path2": "/export/livia/data/lemoineh/torch_facetripletloss/models/COXfinetune2/model_169.pth",
-    "checkpoint_path1": "/export/livia/data/lemoineh/torch_facetripletloss/models/TripletLossPlots6/model_199.pth",
-    "checkpoint_path": "/export/livia/data/lemoineh/torch_facetripletloss/models/COXvideo4_finetune/model_49.pth",
-    "input_size": 160,
+    "checkpoint_path": "/export/livia/data/lemoineh/torch_facetripletloss/models/TripletLossPlots6/model_199.pth",
     "embedding_size": 128
   },
 
   "hyperparameters": {
-
     "margin": 0.2,
-    "lamda": [1.0, 1.0],
-
-    "n_epochs": 60,
+    "n_epochs": 1000,
     "image_size": 160,
-    "images_per_person": 5,
-    "people_per_batch": 15,
+    "images_per_person": 50,
+    "people_per_batch": 40,
 
     "optimizer": "SGD",
-    "learning_rate": 0.001,
+    "learning_rate": 0.0005,
     "learning_rate_decay_epochs": 4,
-    "learning_rate_decay_factor": 0.98,
+    "learning_rate_decay_factor": 0.99,
     "weight_decay": 2e-4,
     "moving_average_decay": 0.9999,
-
-    "val_far": 1e-2,
 
     "triplet_swap": true,
     "random_crop": false,
@@ -81,9 +82,9 @@
   },
 
   "visdom": {
-    "environment_name": "DA2_video4_video1_L12_m0.2_l0.001",
+    "environment_name": "BBTfinetune2",
     "port": 8097,
-    "log_interval": 5
+    "log_interval": 10
   }
 
 }

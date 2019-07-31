@@ -1,8 +1,12 @@
 
+import os
+
 import utils
-from dataset_utils import coxs2v, vggface2
+from dataset_utils import coxs2v, vggface2, bbt
 from dataset_utils import dataloaders
 from torchvision import transforms
+
+import torch
 
 
 def Get_TrainDataloaders(exp_name, config):
@@ -45,6 +49,51 @@ def Get_TrainDataloaders(exp_name, config):
                                                          is_cox_video3=False,
                                                          is_cox_video4=False)
 
+    elif exp_name == 'COXvideo1_finetune':
+        train_loader = coxs2v.get_coxs2v_trainset(config.dataset.coxs2v.still_dir,
+                                                  config.dataset.coxs2v.video1_dir,
+                                                  config.dataset.coxs2v.video1_pairs,
+                                                  train_folds,
+                                                  nrof_folds,
+                                                  train_transforms,
+                                                  config.hyperparameters.people_per_batch,
+                                                  config.hyperparameters.images_per_person)
+
+        test_container = dataloaders.Get_TestDataloaders(config,
+                                                         eval_transforms,
+                                                         test_batch_size,
+                                                         test_folds,
+                                                         nrof_folds,
+                                                         is_vggface2=False,
+                                                         is_lfw=True,
+                                                         is_cox_video1=True,
+                                                         is_cox_video2=False,
+                                                         is_cox_video3=False,
+                                                         is_cox_video4=False)
+
+    elif exp_name == 'COXvideo1_calibration':
+        train_loader = coxs2v.get_coxs2v_trainset(config.dataset.coxs2v.still_dir,
+                                                  config.dataset.coxs2v.video1_dir,
+                                                  config.dataset.coxs2v.video1_pairs,
+                                                  val_folds,
+                                                  nrof_folds,
+                                                  train_transforms,
+                                                  config.hyperparameters.people_per_batch,
+                                                  config.hyperparameters.images_per_person,
+                                                  video_only=True)
+
+        test_container = dataloaders.Get_TestDataloaders(config,
+                                                         eval_transforms,
+                                                         test_batch_size,
+                                                         test_folds,
+                                                         nrof_folds,
+                                                         is_vggface2=False,
+                                                         is_lfw=True,
+                                                         is_cox_video1=True,
+                                                         is_cox_video2=False,
+                                                         is_cox_video3=False,
+                                                         is_cox_video4=False)
+
     elif exp_name == 'COXvideo2_finetune':
         train_loader = coxs2v.get_coxs2v_trainset(config.dataset.coxs2v.still_dir,
                                                   config.dataset.coxs2v.video2_dir,
@@ -62,10 +111,33 @@ def Get_TrainDataloaders(exp_name, config):
                                                          nrof_folds,
                                                          is_vggface2=False,
                                                          is_lfw=True,
-                                                         is_cox_video1=True,
+                                                         is_cox_video1=False,
                                                          is_cox_video2=True,
-                                                         is_cox_video3=True,
-                                                         is_cox_video4=True)
+                                                         is_cox_video3=False,
+                                                         is_cox_video4=False)
+
+    elif exp_name == 'COXvideo2_calibration':
+        train_loader = coxs2v.get_coxs2v_trainset(config.dataset.coxs2v.still_dir,
+                                                  config.dataset.coxs2v.video2_dir,
+                                                  config.dataset.coxs2v.video2_pairs,
+                                                  val_folds,
+                                                  nrof_folds,
+                                                  train_transforms,
+                                                  config.hyperparameters.people_per_batch,
+                                                  config.hyperparameters.images_per_person,
+                                                  video_only=True)
+
+        test_container = dataloaders.Get_TestDataloaders(config,
+                                                         eval_transforms,
+                                                         test_batch_size,
+                                                         test_folds,
+                                                         nrof_folds,
+                                                         is_vggface2=False,
+                                                         is_lfw=True,
+                                                         is_cox_video1=False,
+                                                         is_cox_video2=True,
+                                                         is_cox_video3=False,
+                                                         is_cox_video4=False)
 
     elif exp_name == 'COXvideo3_finetune':
         train_loader = coxs2v.get_coxs2v_trainset(config.dataset.coxs2v.still_dir,
@@ -84,10 +156,33 @@ def Get_TrainDataloaders(exp_name, config):
                                                          nrof_folds,
                                                          is_vggface2=False,
                                                          is_lfw=True,
-                                                         is_cox_video1=True,
-                                                         is_cox_video2=True,
+                                                         is_cox_video1=False,
+                                                         is_cox_video2=False,
                                                          is_cox_video3=True,
-                                                         is_cox_video4=True)
+                                                         is_cox_video4=False)
+
+    elif exp_name == 'COXvideo3_calibration':
+        train_loader = coxs2v.get_coxs2v_trainset(config.dataset.coxs2v.still_dir,
+                                                  config.dataset.coxs2v.video3_dir,
+                                                  config.dataset.coxs2v.video3_pairs,
+                                                  val_folds,
+                                                  nrof_folds,
+                                                  train_transforms,
+                                                  config.hyperparameters.people_per_batch,
+                                                  config.hyperparameters.images_per_person,
+                                                  video_only=True)
+
+        test_container = dataloaders.Get_TestDataloaders(config,
+                                                         eval_transforms,
+                                                         test_batch_size,
+                                                         test_folds,
+                                                         nrof_folds,
+                                                         is_vggface2=False,
+                                                         is_lfw=True,
+                                                         is_cox_video1=False,
+                                                         is_cox_video2=False,
+                                                         is_cox_video3=True,
+                                                         is_cox_video4=False)
 
     elif exp_name == 'COXvideo4_finetune':
         train_loader = coxs2v.get_coxs2v_trainset(config.dataset.coxs2v.still_dir,
@@ -111,6 +206,73 @@ def Get_TrainDataloaders(exp_name, config):
                                                          is_cox_video3=False,
                                                          is_cox_video4=True)
 
+    elif exp_name == 'COXvideo4_calibration':
+        train_loader = coxs2v.get_coxs2v_trainset(config.dataset.coxs2v.still_dir,
+                                                  config.dataset.coxs2v.video4_dir,
+                                                  config.dataset.coxs2v.video4_pairs,
+                                                  val_folds,
+                                                  nrof_folds,
+                                                  train_transforms,
+                                                  config.hyperparameters.people_per_batch,
+                                                  config.hyperparameters.images_per_person,
+                                                  video_only=True)
+
+        test_container = dataloaders.Get_TestDataloaders(config,
+                                                         eval_transforms,
+                                                         test_batch_size,
+                                                         test_folds,
+                                                         nrof_folds,
+                                                         is_vggface2=False,
+                                                         is_lfw=True,
+                                                         is_cox_video1=False,
+                                                         is_cox_video2=False,
+                                                         is_cox_video3=False,
+                                                         is_cox_video4=True)
+
+    elif exp_name == 'BBT_trackfinetune_GT':
+
+        train_set = bbt.BBTTrackDataset(config.dataset.bbt.annotation_path,
+                                        config.dataset.bbt.movie_path,
+                                        100000,
+                                        transform=train_transforms)
+
+        batch_sampler = bbt.TrackSampler(train_set,
+                                         config.hyperparameters.images_per_person)
+
+        train_loader = torch.utils.data.DataLoader(train_set,
+                                                   num_workers=8,
+                                                   batch_sampler=batch_sampler,
+                                                   pin_memory=True)
+
+        test_container = dataloaders.Get_TestDataloaders(config,
+                                                         eval_transforms,
+                                                         test_batch_size,
+                                                         test_folds,
+                                                         nrof_folds,
+                                                         is_vggface2=False,
+                                                         is_lfw=True,
+                                                         is_cox_video1=False,
+                                                         is_cox_video2=False,
+                                                         is_cox_video3=False,
+                                                         is_cox_video4=False)
+
+    elif exp_name == 'BBT_trackfinetune':
+
+        train_loader = bbt.get_trainset(config.dataset.bbt.pkl_dataset_path,
+                                        config.hyperparameters.images_per_person,
+                                        transform=train_transforms)
+
+        test_container = dataloaders.Get_TestDataloaders(config,
+                                                         eval_transforms,
+                                                         test_batch_size,
+                                                         test_folds,
+                                                         nrof_folds,
+                                                         is_vggface2=False,
+                                                         is_lfw=False,
+                                                         is_cox_video1=False,
+                                                         is_cox_video2=False,
+                                                         is_cox_video3=False,
+                                                         is_cox_video4=False)
     else:
         raise Exception('Experiment {} does not exist.'.format(exp_name))
 

@@ -16,6 +16,7 @@ def get_coxs2v_trainset(still_dir,
                         data_transform,
                         people_per_batch,
                         images_per_person,
+                        balanced=True,
                         video_only=False,
                         samples_division_list=None,  # [0.6, 0.4]
                         div_idx: int = -1):
@@ -33,15 +34,23 @@ def get_coxs2v_trainset(still_dir,
                                    samples_division_list=samples_division_list,  # [0.4, 0.6]
                                    div_idx=div_idx)
 
-    batch_sampler = sampler.Random_S2VBalancedBatchSampler(train_set,
-                                                   people_per_batch,
-                                                   images_per_person,
-                                                   max_batches=1000)
+    if balanced:
+        batch_sampler = sampler.Random_S2VBalancedBatchSampler(train_set,
+                                                       people_per_batch,
+                                                       images_per_person,
+                                                       max_batches=1000)
 
-    return torch.utils.data.DataLoader(train_set,
-                                       num_workers=8,
-                                       batch_sampler=batch_sampler,
-                                       pin_memory=True)
+        return torch.utils.data.DataLoader(train_set,
+                                           num_workers=8,
+                                           batch_sampler=batch_sampler,
+                                           pin_memory=True)
+    else:
+        return torch.utils.data.DataLoader(train_set,
+                                           batch_size=people_per_batch*images_per_person,
+                                           shuffle=True,
+                                           num_workers=8,
+                                           pin_memory=True)
+
 
 def get_coxs2v_testset(still_dir,
                        video_dir,

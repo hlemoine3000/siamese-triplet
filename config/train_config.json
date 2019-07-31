@@ -1,7 +1,7 @@
 {
   "name": "config",
   "version": "1.0.0",
-  "experiment": "COXvideo4_finetune",
+  "experiment": "train_vggface2",
 
   "train_mode": {
     "mode": "tripletloss",
@@ -49,7 +49,7 @@
 
   "model": {
     "model_arch": "resnet50",
-    "pretrained_imagenet": true,
+    "pretrained_imagenet": false,
     "checkpoint": true,
     "checkpoint_path": "/export/livia/data/lemoineh/torch_facetripletloss/models/TripletLossPlots6/model_199.pth",
     "embedding_size": 128
@@ -57,17 +57,18 @@
 
   "hyperparameters": {
     "margin": 0.2,
-    "n_epochs": 1000,
+    "n_epochs": 50,
     "image_size": 160,
     "images_per_person": 5,
-    "people_per_batch": 40,
+    "people_per_batch": 15,
 
     "optimizer": "SGD",
-    "learning_rate": 0.0005,
+    "learning_rate": 0.001,
     "learning_rate_decay_epochs": 4,
-    "learning_rate_decay_factor": 0.99,
+    "learning_rate_decay_factor": 0.98,
     "weight_decay": 2e-4,
     "moving_average_decay": 0.9999,
+    "val_far": 1e-2,
 
     "triplet_swap": true,
     "random_crop": false,
@@ -75,7 +76,7 @@
   },
 
   "visdom": {
-    "environment_name": "COXvideo4_finetune",
+    "environment_name": "train_vggface2",
     "port": 8097,
     "log_interval": 50
   }

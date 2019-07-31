@@ -19,6 +19,45 @@ from dataset_utils import dataset
 from utils.plotter import VisdomScatterPlotter
 
 
+class TSNE_Visualizer:
+    def __init__(self,
+                 perplexity=30.0):
+
+        self.perplexity = perplexity
+        self.is_trained = False
+        self.X_embedded = None
+
+    def train(self, embeddings):
+        self.X_embedded = TSNE(n_components=2,
+                               perplexity=self.perplexity ,
+                               early_exaggeration=12.0, learning_rate=200.0, n_iter=20000,
+                               n_iter_without_progress=1000, min_grad_norm=1e-7,
+                               metric="euclidean", init="random", verbose=1,
+                               random_state=None, method='exact', angle=0.2).fit_transform(embeddings)
+        self.is_trained = True
+
+    def plot(self,
+             labels,
+             name='Embeddings Visualisation TSNE',
+             env_name='Emb_vis',
+             port=8097):
+
+        if not self.is_trained:
+            print('Nothing to plot. Run train() first.')
+            return 1
+
+        my_plot = VisdomScatterPlotter(env_name=env_name,
+                                       port=port)
+
+        labels_plot = labels.copy()
+        labels_plot += 1
+        my_plot.plot(name,
+                     self.X_embedded,
+                     labels_plot)
+
+        return 0
+
+
 def parse_arguments(argv):
     parser = argparse.ArgumentParser()
 

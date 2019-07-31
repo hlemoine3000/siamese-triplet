@@ -1,13 +1,15 @@
 {
   "name": "config",
   "version": "1.0.0",
+  "experiment": "COXvideo4_finetune",
 
-  "experiment2": "da_vggface2_to_video3",
-  "experiment": "da_video4_to_video1",
-  "mode": "dualtriplet",
-  "mode2": "supervised_dualtriplet",
+  "train_mode": {
+    "mode": "tripletloss",
+    "miner": "semihardtriplets"
+  },
 
   "dataset": {
+
     "vggface2": {
       "train_dir": "/export/livia/data/lemoineh/vggface2/train_182",
       "test_dir": "/export/livia/data/lemoineh/vggface2/test_182",
@@ -46,33 +48,26 @@
   },
 
   "model": {
-    "model_arch": "resnet50",
-    "pretrained_imagenet": false,
+    "model_arch": "ir50",
+    "pretrained_imagenet": true,
     "checkpoint": true,
-    "checkpoint_path2": "/export/livia/data/lemoineh/torch_facetripletloss/models/COXfinetune2/model_169.pth",
-    "checkpoint_path1": "/export/livia/data/lemoineh/torch_facetripletloss/models/TripletLossPlots6/model_199.pth",
-    "checkpoint_path": "/export/livia/data/lemoineh/torch_facetripletloss/models/COXvideo4_finetune/model_49.pth",
-    "input_size": 160,
-    "embedding_size": 128
+    "checkpoint_path": "/export/livia/data/lemoineh/torch_facetripletloss/backbone_ir50_ms1m_epoch63.pth",
+    "embedding_size": 512
   },
 
   "hyperparameters": {
-
     "margin": 0.2,
-    "lamda": [1.0, 1.0],
-
-    "n_epochs": 60,
-    "image_size": 160,
+    "n_epochs": 1000,
+    "image_size": 112,
     "images_per_person": 5,
-    "people_per_batch": 15,
+    "people_per_batch": 40,
 
     "optimizer": "SGD",
-    "learning_rate": 0.001,
+    "learning_rate": 0.0005,
     "learning_rate_decay_epochs": 4,
-    "learning_rate_decay_factor": 0.98,
+    "learning_rate_decay_factor": 0.99,
     "weight_decay": 2e-4,
     "moving_average_decay": 0.9999,
-
     "val_far": 1e-2,
 
     "triplet_swap": true,
@@ -80,10 +75,19 @@
     "random_hor_flip": true
   },
 
+  "embeddings_visualisation": {
+    "num_class": 5,
+    "num_sample_per_class": 10,
+
+    "tsne":{
+      "perplexity": 30
+    }
+  },
+
   "visdom": {
-    "environment_name": "DA2_video4_video1_L12_m0.2_l0.001",
+    "environment_name": "COXvideo4_finetune",
     "port": 8097,
-    "log_interval": 5
+    "log_interval": 50
   }
 
 }

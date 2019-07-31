@@ -179,3 +179,42 @@ class BalancedBatchSampler(BatchSampler):
 
     def __len__(self):
         return self.n_dataset // self.batch_size
+
+
+class TrackSampler(BatchSampler):
+    r"""Samples elements sequentially, always in the same order.
+
+    Arguments:
+        data_source (Dataset): dataset to sample from
+    """
+
+    def __init__(self,
+                 data_source: dataset.TrackDataset,
+                 samples_per_class: int):
+
+        self.data_source = data_source
+        self.samples_per_class = samples_per_class
+
+        self.num_batches = len(self.data_source.cooccurring_tracks)
+
+        self.coocurringtracks_idxs = np.arange(len(self.data_source.cooccurring_tracks))
+
+    def __iter__(self):
+
+        batches = []
+        coocurringtracks_idxs_shuffled = self.coocurringtracks_idxs.copy()
+        np.random.shuffle(coocurringtracks_idxs_shuffled)
+        for i in range(self.num_batches):
+            batch = []
+            coocurringtracks_idx = coocurringtracks_idxs_shuffled[i]
+            for track in self.data_source.cooccurring_tracks[coocurringtracks_idx]:
+                samples_idx = self.data_source.track_to_bbxidx[track]
+                num_samples = min(self.samples_per_class, len(samples_idx))
+                chosen_samples_idx = np.random.choice(samples_idx, num_samples, replace=False)
+                batch.append(chosen_samples_idx)
+            batches.append(np.concatenate(batch))
+
+        return iter(batches)
+
+    def __len__(self):
+        return self.num_batches

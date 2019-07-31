@@ -2,7 +2,9 @@
 import os
 import numpy as np
 from collections import OrderedDict
+from PIL import Image
 import tqdm
+
 
 class FoldGenerator():
     def __init__(self, num_fold: int, num_train: int, num_val: int):
@@ -15,6 +17,7 @@ class FoldGenerator():
 
     def permute(self):
         self.fold_list.append(self.fold_list.pop(0))
+
 
 class AverageMeter:
     """Computes and stores the average and current value"""
@@ -36,7 +39,10 @@ class AverageMeter:
 
     @property
     def avg(self):
-        return sum(self.values) / len(self.values)
+        if len(self.values) != 0:
+            return sum(self.values) / len(self.values)
+        else:
+            return 0
 
     @property
     def last_avg(self):
@@ -78,11 +84,20 @@ class AttrDict(dict):
     __setattr__ = __setitem__
 
 
+def make_square(im: Image, fill_color=(0, 0, 0, 0)):
+    x, y = im.size
+    size = max(x, y)
+    new_im = Image.new(im.mode, (size, size), fill_color)
+    new_im.paste(im, (int((size - x) / 2), int((size - y) / 2)))
+    return new_im
+
+
 def state_dict_to_cpu(state_dict: OrderedDict):
     new_state = OrderedDict()
     for k in state_dict.keys():
         new_state[k] = state_dict[k].cpu()
     return new_state
+
 
 def get_image_paths(image_dir):
     image_paths = []

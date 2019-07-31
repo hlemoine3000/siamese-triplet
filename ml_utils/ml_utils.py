@@ -1,28 +1,22 @@
 
 import  tqdm
 import  torch
+from torch import nn
+from torch.utils.data import DataLoader
 
-def extract_features(images,
-                     model,
-                     device,
-                     batch_size=50):
+def extract_features(dataloader: DataLoader,
+                     model: nn.Module,
+                     device):
 
     embeddings = []
-    issame_array = []
-
     model.eval()
+    tbar = tqdm.tqdm(dataloader)
 
     with torch.no_grad():
-        tbar = tqdm.tqdm(data_loader, dynamic_ncols=True)
-        for images_batch, issame in tbar:
-            # Transfer to GPU
+        for images_batch in tbar:
 
-            image_batch = images_batch.to(device, non_blocking=True)
+            # Forward pass
+            source_batch = images_batch.to(device)
+            embeddings.append(model.forward(source_batch))
 
-            emb = model.forward(image_batch)
-
-            embeddings.append(emb)
-            issame_array.append(deepcopy(issame))
-
-        embeddings = torch.cat(embeddings, 0).cpu().numpy()
-        issame_array = torch.cat(issame_array, 0).cpu().numpy()
+    return torch.cat(embeddings, 0).cpu().numpy()

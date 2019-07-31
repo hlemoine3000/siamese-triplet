@@ -1,7 +1,21 @@
 from itertools import combinations
 
+from ml_utils import clustering
 import numpy as np
 import torch
+
+
+def get_miner(mode, margin, people_per_batch):
+
+    if mode == 'dualtriplet':
+        return FunctionDualTripletSelector(margin,
+                                           people_per_batch)
+
+    elif mode == 'supervised_dualtriplet':
+        return FunctionDualTripletSupervisedSelector(margin)
+
+    else:
+        raise Exception('Miner type {} does not exist.'.format(mode))
 
 
 def pdist(vectors):
@@ -178,6 +192,7 @@ class FunctionNegativeTripletSelector(TripletSelector):
 
         return torch.LongTensor(triplets)
 
+
 class FunctionNegativeQuadrupletSelector(TripletSelector):
     """
     For each positive pair, takes the hardest negative sample (with the greatest triplet loss value) to create a triplet
@@ -239,7 +254,7 @@ class FunctionNegativeQuadrupletSelector(TripletSelector):
         return torch.LongTensor(quadruplets)
 
 
-class FunctionNegativeTargetQuadrupletSelector(TripletSelector):
+class FunctionDualTripletSelector(TripletSelector):
     """
     For each positive pair, takes the hardest negative sample (with the greatest triplet loss value) to create a triplet
     Margin should match the margin used in triplet loss.
@@ -248,14 +263,13 @@ class FunctionNegativeTargetQuadrupletSelector(TripletSelector):
     Target samples are chosen ramdomly
     """
 
-    def __init__(self, margin, lamda, margin_factor=2, cpu=False):
-        super(FunctionNegativeTargetQuadrupletSelector, self).__init__()
+    def __init__(self, margin, max_clusters, cpu=False):
+        super(FunctionDualTripletSelector, self).__init__()
         self.cpu = cpu
         self.margin = margin
-        self.margin_factor = margin_factor
-        self.lamda = lamda
+        self.max_clusters = max_clusters
 
-    def get_quadruplets(self, source_embeddings, target_embeddings, source_labels):
+    def get_dualtriplet(self, source_embeddings, source_labels, target_embeddings):
         if self.cpu:
             source_embeddings = source_embeddings.cpu()
             target_embeddings = target_embeddings.cpu()
@@ -264,11 +278,13 @@ class FunctionNegativeTargetQuadrupletSelector(TripletSelector):
         distance_matrix = pdist(concat_embeddings)
         dist_split_idx = source_labels.size(0)
 
-        num_target = target_embeddings.size(0)
-        num_target_type = [0, 0, 0]
+        ############################
+        # Generate source triplets #
+        ############################
 
-        quadruplets = []
+        src_distance_matrix = distance_matrix[:dist_split_idx, :dist_split_idx]
 
+        source_triplets = []
         for label in set(source_labels):
             label_mask = (source_labels == label)
             label_indices = np.where(label_mask)[0]
@@ -278,74 +294,260 @@ class FunctionNegativeTargetQuadrupletSelector(TripletSelector):
             anchor_positives = list(combinations(label_indices, 2))  # All anchor-positive pairs
             anchor_positives = np.array(anchor_positives)
 
-            ap_distances = distance_matrix[anchor_positives[:, 0], anchor_positives[:, 1]]
+            ap_distances = src_distance_matrix[anchor_positives[:, 0], anchor_positives[:, 1]]
             for anchor_positive, ap_distance in zip(anchor_positives, ap_distances):
 
-                negative_distance_matrix = distance_matrix[torch.LongTensor(np.array([anchor_positive[0]])), torch.LongTensor(negative_indices)]
-                target_distance_matrix = distance_matrix[anchor_positive[0], dist_split_idx:]
+                negative_distance_matrix = src_distance_matrix[
+                    torch.LongTensor(np.array([anchor_positive[0]])), torch.LongTensor(negative_indices)]
 
-                # loss1 = F.relu(distance_positive - distance_negative + self.margin)
-                loss1_values = self.lamda[0] * (ap_distance - negative_distance_matrix + self.margin)
+                # loss = F.relu(distance_positive - distance_negative + self.margin)
+                loss_values = (ap_distance - negative_distance_matrix + self.margin)
 
-                # loss2 = F.relu(distance_positive - distance_target + self.margin)
-                loss2_values = self.lamda[1] * (ap_distance - target_distance_matrix + self.margin)
+                loss_values = loss_values.data.cpu().numpy()
 
-                # loss3 = F.relu(distance_negative - distance_positive - 2 * self.margin)
-                loss3_values = self.lamda[2] * (negative_distance_matrix - ap_distance - self.margin_factor * self.margin)
-
-                # loss4 = F.relu(distance_target - distance_positive - 2 * self.margin)
-                loss4_values = self.lamda[3] * (target_distance_matrix - ap_distance - self.margin_factor * self.margin)
-
-                loss1_values = loss1_values.data.cpu().numpy()
-                loss2_values = loss2_values.data.cpu().numpy()
-                loss3_values = loss3_values.data.cpu().numpy()
-                loss4_values = loss4_values.data.cpu().numpy()
-
-                hard_negative = semihard_negative(loss1_values, self.margin)
-
-                hard_target2 = semihard_negative(loss2_values, self.margin)
-                hard_target3 = hardest_negative(loss3_values)
-                hard_target4 = hardest_negative(loss4_values)
-                hard_target_list = [hard_target2, hard_target3, hard_target4]
-
-                # Balancing the target selection between the three possible hard_target
-                hard_target = None
-                target_indexes = sorted(range(len(num_target_type)), key=lambda k: num_target_type[k])
-                for tgt_idx in target_indexes:
-                    hard_target = hard_target_list[tgt_idx]
-                    if hard_target is not None:
-                        num_target_type[tgt_idx] += 1
-                        break
+                hard_negative = semihard_negative(loss_values, self.margin)
 
                 if hard_negative is not None:
 
                     hard_negative = negative_indices[hard_negative]
+                    source_triplets.append([anchor_positive[0], anchor_positive[1], hard_negative])
 
-                    # Target sample chosen ramdomly
-                    if not hard_target:
-                        hard_target = np.random.randint(num_target)
+        ############################
+        # Generate target triplets #
+        ############################
 
-                    quadruplet = [anchor_positive[0], anchor_positive[1], hard_negative, hard_target]
+        tgt_distance_matrix = distance_matrix[dist_split_idx:, dist_split_idx:]
 
-                    quadruplets.append(quadruplet)
+        # target_clustering = clustering.kmeans_cluster(n_clusters=15)
+        # target_labels = target_clustering.cluster(target_embeddings.cpu().detach().numpy())
 
-                elif hard_target is not None:
+        target_labels, clustering_score, n_clusters = clustering.kmeans_silhouetteanalysis(target_embeddings.cpu().detach().numpy(),
+                                                                                           self.max_clusters)
 
-                        # Choose a random negative sample
-                        hard_negative = np.random.choice(negative_indices)
-                        quadruplet = [anchor_positive[0], anchor_positive[1], hard_negative, hard_target]
-                        quadruplets.append(quadruplet)
+        target_triplets = []
+        for label in set(target_labels):
+            label_mask = (target_labels == label)
+            label_indices = np.where(label_mask)[0]
+            if len(label_indices) < 2:
+                continue
+            negative_indices = np.where(np.logical_not(label_mask))[0]
+            anchor_positives = list(combinations(label_indices, 2))  # All anchor-positive pairs
+            anchor_positives = np.array(anchor_positives)
+
+            ap_distances = tgt_distance_matrix[anchor_positives[:, 0], anchor_positives[:, 1]]
+            for anchor_positive, ap_distance in zip(anchor_positives, ap_distances):
+
+                negative_distance_matrix = tgt_distance_matrix[
+                    torch.LongTensor(np.array([anchor_positive[0]])), torch.LongTensor(negative_indices)]
+
+                # loss = F.relu(distance_positive - distance_negative + self.margin)
+                loss_values = (ap_distance - negative_distance_matrix + self.margin)
+
+                loss_values = loss_values.data.cpu().numpy()
+
+                hard_negative = semihard_negative(loss_values, self.margin)
+
+                if hard_negative is not None:
+                    hard_negative = negative_indices[hard_negative]
+                    target_triplets.append([anchor_positive[0], anchor_positive[1], hard_negative])
+
+        # Fuse and balance triplets
+        dual_triplets = []
+        num_dualtriplets = min(len(source_triplets), len(target_triplets))
+        for idx in range(num_dualtriplets):
+            dual_triplets.append(source_triplets[idx] + target_triplets[idx])
 
         # Give at least one sample
-        if len(quadruplets) == 0:
-            # Target sample chosen ramdomly
-            target_indice = np.random.randint(num_target)
+        if len(dual_triplets) == 0:
+            dual_triplets.append([0, 0, 0, 0, 0, 0])
 
-            quadruplets.append([anchor_positive[0], anchor_positive[1], negative_indices[0], target_indice])
+        dual_triplets = np.array(dual_triplets)
 
-        quadruplets = np.array(quadruplets)
+        # miner_data = {'num_src_triplets': len(source_triplets),
+        #               'num_tgt_triplets': len(target_triplets)}
 
-        return torch.LongTensor(quadruplets), num_target_type
+        miner_data = {'num_src_triplets': len(source_triplets),
+                      'num_tgt_triplets': len(target_triplets),
+                      'n_clusters': n_clusters,
+                      'clustering_score': clustering_score}
+
+        return torch.LongTensor(dual_triplets), miner_data
+
+
+class FunctionDualTripletSupervisedSelector(TripletSelector):
+    """
+    For each positive pair, takes the hardest negative sample (with the greatest triplet loss value) to create a triplet
+    Margin should match the margin used in triplet loss.
+    negative_selection_fn should take array of loss_values for a given anchor-positive pair and all negative samples
+    and return a negative index for that pair
+    Target samples are chosen ramdomly
+    """
+
+    def __init__(self, margin, cpu=False):
+        super(FunctionDualTripletSupervisedSelector, self).__init__()
+        self.cpu = cpu
+        self.margin = margin
+        self.selector = SemihardNegativeTripletSelector(margin)
+
+    def get_dualtriplet(self, source_embeddings, source_labels, target_embeddings, target_labels):
+
+        source_triplets = self.selector.get_triplets(source_embeddings, source_labels)
+        target_triplets = self.selector.get_triplets(target_embeddings, target_labels)
+
+        num_src_triplets = source_triplets.size(0)
+        num_tgt_triplets = target_triplets.size(0)
+        num_dualtriplet = min(num_src_triplets, num_tgt_triplets)
+
+        source_triplets = source_triplets[:num_dualtriplet]
+        target_triplets = target_triplets[:num_dualtriplet]
+
+        dual_triplets = torch.cat((source_triplets, target_triplets), 1)
+
+        miner_data = {'num_src_triplets': num_src_triplets,
+                      'num_tgt_triplets': num_tgt_triplets}
+
+        return dual_triplets, miner_data
+
+
+# class FunctionQuintupletSelector(TripletSelector):
+#     """
+#     For each positive pair, takes the hardest negative sample (with the greatest triplet loss value) to create a triplet
+#     Margin should match the margin used in triplet loss.
+#     negative_selection_fn should take array of loss_values for a given anchor-positive pair and all negative samples
+#     and return a negative index for that pair
+#     Target samples are chosen ramdomly
+#     """
+#
+#     def __init__(self, src_margin, tgt_margin, lamda, deadzone=0.1, cpu=False):
+#         super(FunctionQuintupletSelector, self).__init__()
+#         self.cpu = cpu
+#         self.src_margin = src_margin
+#         self.tgt_margin = tgt_margin
+#         self.deadzone = deadzone
+#         self.lamda = lamda
+#
+#     def get_quintuplet(self, source_embeddings, source_labels, target_embeddings):
+#         if self.cpu:
+#             source_embeddings = source_embeddings.cpu()
+#             target_embeddings = target_embeddings.cpu()
+#
+#         concat_embeddings = torch.cat((source_embeddings, target_embeddings), 0)
+#         distance_matrix = pdist(concat_embeddings)
+#         dist_split_idx = source_labels.size(0)
+#
+#         num_target = target_embeddings.size(0)
+#
+#         ############################
+#         # Generate source triplets #
+#         ############################
+#         source_triplets = []
+#         for label in set(source_labels):
+#             label_mask = (source_labels == label)
+#             label_indices = np.where(label_mask)[0]
+#             if len(label_indices) < 2:
+#                 continue
+#             negative_indices = np.where(np.logical_not(label_mask))[0]
+#             anchor_positives = list(combinations(label_indices, 2))  # All anchor-positive pairs
+#             anchor_positives = np.array(anchor_positives)
+#
+#             ap_distances = distance_matrix[anchor_positives[:, 0], anchor_positives[:, 1]]
+#             for anchor_positive, ap_distance in zip(anchor_positives, ap_distances):
+#
+#                 negative_distance_matrix = distance_matrix[
+#                     torch.LongTensor(np.array([anchor_positive[0]])), torch.LongTensor(negative_indices)]
+#
+#                 # loss1 = F.relu(distance_positive - distance_negative + self.margin)
+#                 loss_values = self.lamda[0] * (ap_distance - negative_distance_matrix + self.src_margin)
+#
+#                 loss_values = loss_values.data.cpu().numpy()
+#
+#                 hard_negative = semihard_negative(loss_values, self.src_margin)
+#
+#                 if hard_negative is not None:
+#
+#                     hard_negative = negative_indices[hard_negative]
+#                     source_triplets.append([anchor_positive[0], anchor_positive[1], hard_negative])
+#
+#         ############################
+#         # Generate target triplets #
+#         ############################
+#
+#         # Calculate mean ap and an distances based on source domain
+#         ap_distances_list = []
+#         an_distances_list = []
+#         for label in set(source_labels):
+#             label_mask = (source_labels == label)
+#             label_indices = np.where(label_mask)[0]
+#             if len(label_indices) < 2:
+#                 continue
+#             negative_indices = np.where(np.logical_not(label_mask))[0]
+#             anchor_positives = list(combinations(label_indices, 2))  # All anchor-positive pairs
+#             anchor_positives = np.array(anchor_positives)
+#
+#             ap_distances_list.append(
+#                 torch.mean(distance_matrix[anchor_positives[:, 0], anchor_positives[:, 1]]))
+#
+#             for anchor_positive in anchor_positives:
+#                 an_distances_list.append(torch.mean(distance_matrix[anchor_positive[0], negative_indices]))
+#
+#         mean_ap_distances = torch.mean(torch.stack(ap_distances_list)).cpu().item()
+#         mean_an_distances = torch.mean(torch.stack(an_distances_list)).cpu().item()
+#         if mean_an_distances < mean_ap_distances:
+#             mean_an_distances = torch.Tensor(2)
+#             mean_ap_distances = torch.Tensor(1)
+#
+#         similarity_threshold = (mean_an_distances + mean_ap_distances) / 2
+#         similar_threshold = similarity_threshold - self.deadzone
+#         different_threshold = similarity_threshold + self.deadzone
+#
+#         # Form triplets based on the similarity distances
+#         target_triplets = []
+#         target_distances = distance_matrix[dist_split_idx:, dist_split_idx:].detach().cpu().numpy()
+#         target_idxs = np.arange(num_target)
+#         for target_idx in target_idxs:
+#             target_distance = target_distances[target_idx, :]
+#
+#             # Search for positive samples
+#             # Reject values over the similar_threshold and search for the highest distance.
+#             positive_samples_idxs = np.where(target_distance < similar_threshold)
+#             ap_distances = target_distance[positive_samples_idxs]
+#             if ap_distances.size != 0:
+#                 max_ap_distance = np.amax(ap_distances)
+#                 positive_index = np.where(ap_distances == max_ap_distance)[0][0]
+#             else:
+#                 positive_index = None
+#
+#             # Search for negative samples
+#             # Reject values below the different_threshold and search for the lowest distance.
+#             negative_samples_idxs = np.where(target_distance > different_threshold)
+#             an_distances = target_distance[negative_samples_idxs]
+#             if an_distances.size != 0:
+#                 min_an_distance = np.amin(an_distances)
+#                 negative_index = np.where(an_distances == min_an_distance)[0][0]
+#             else:
+#                 negative_index = None
+#
+#             if (negative_index is not None) and (positive_index is not None):
+#                 loss_value = target_distance[positive_index] - target_distance[negative_index] + self.tgt_margin
+#                 if loss_value > 0:
+#                     target_triplets.append([target_idx, positive_index, negative_index])
+#
+#         # Fuse and balance triplets
+#         dual_triplets = []
+#         num_dualtriplets = min(len(source_triplets), len(target_triplets))
+#         for idx in range(num_dualtriplets):
+#             dual_triplets.append(source_triplets[idx] + target_triplets[idx])
+#
+#         # Give at least one sample
+#         if len(dual_triplets) == 0:
+#             dual_triplets.append([0, 0, 0, 0, 0, 0])
+#
+#         dual_triplets = np.array(dual_triplets)
+#
+#         miner_data = {'num_src_triplets': len(source_triplets),
+#                       'num_tgt_triplets': len(target_triplets)}
+#
+#         return torch.LongTensor(dual_triplets), miner_data
 
 
 def HardestNegativeTripletSelector(margin, cpu=False): return FunctionNegativeTripletSelector(margin=margin,
@@ -368,5 +570,5 @@ def SemihardNegativeQuadrupletSelector(margin, cpu=False): return FunctionNegati
                                                                                   cpu=cpu)
 
 
-def SemihardNegativeTargetQuadrupletSelector(margin, cpu=False): return FunctionNegativeTargetQuadrupletSelector(margin=margin,
-                                                                                  cpu=cpu)
+# def SemihardNegativeTargetQuadrupletSelector(margin, cpu=False): return FunctionNegativeTargetQuadrupletSelector(margin=margin,
+#                                                                                   cpu=cpu)

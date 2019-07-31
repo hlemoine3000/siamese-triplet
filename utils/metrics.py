@@ -30,7 +30,25 @@ from __future__ import print_function
 import numpy as np
 from sklearn.model_selection import KFold
 from scipy import interpolate
+from numba import jit
 import math
+
+
+@jit
+def iou(bb_test, bb_gt):
+    """
+    Computes IUO between two bboxes in the form [x1,y1,x2,y2]
+    """
+    xx1 = np.maximum(bb_test[0], bb_gt[0])
+    yy1 = np.maximum(bb_test[1], bb_gt[1])
+    xx2 = np.minimum(bb_test[2], bb_gt[2])
+    yy2 = np.minimum(bb_test[3], bb_gt[3])
+    w = np.maximum(0., xx2 - xx1)
+    h = np.maximum(0., yy2 - yy1)
+    wh = w * h
+    o = wh / ((bb_test[2] - bb_test[0]) * (bb_test[3] - bb_test[1])
+              + (bb_gt[2] - bb_gt[0]) * (bb_gt[3] - bb_gt[1]) - wh)
+    return (o)
 
 
 def Distance(embeddings1, embeddings2, distance_metric=0):
@@ -61,6 +79,7 @@ def Calculate_Accuracy(threshold, dist, actual_issame):
     acc = float(tp + tn) / dist.size
     return tpr, fpr, acc
 
+
 def Calculate_Roc(thresholds, embeddings1, embeddings2, actual_issame, nrof_folds=10, distance_metric=0,
                   subtract_mean=False):
     assert (embeddings1.shape[0] == embeddings2.shape[0])
@@ -71,9 +90,6 @@ def Calculate_Roc(thresholds, embeddings1, embeddings2, actual_issame, nrof_fold
 
     tprs = np.zeros((nrof_folds, nrof_thresholds))
     fprs = np.zeros((nrof_folds, nrof_thresholds))
-    tpr = 0
-    fpr = 0
-    best_threshold = 0
     accuracy = np.zeros((nrof_folds))
 
     indices = np.arange(nrof_pairs)
@@ -90,7 +106,6 @@ def Calculate_Roc(thresholds, embeddings1, embeddings2, actual_issame, nrof_fold
         for threshold_idx, threshold in enumerate(thresholds):
             _, _, acc_train[threshold_idx] = Calculate_Accuracy(threshold, dist[train_set], actual_issame[train_set])
         best_threshold_index = np.argmax(acc_train)
-        best_threshold = thresholds[best_threshold_index]
         for threshold_idx, threshold in enumerate(thresholds):
             tprs[fold_idx, threshold_idx], fprs[fold_idx, threshold_idx], _ = Calculate_Accuracy(threshold,
                                                                                                  dist[test_set],
@@ -98,11 +113,11 @@ def Calculate_Roc(thresholds, embeddings1, embeddings2, actual_issame, nrof_fold
                                                                                                      test_set])
         _, _, accuracy[fold_idx] = Calculate_Accuracy(thresholds[best_threshold_index], dist[test_set],
                                                       actual_issame[test_set])
-        # tpr, fpr, accuracy[fold_idx] = calculate_accuracy(thresholds[best_threshold_index], dist[test_set], actual_issame[test_set])
 
         tpr = np.mean(tprs, 0)
         fpr = np.mean(fprs, 0)
-    return tpr, fpr, accuracy, best_threshold
+
+    return tpr, fpr, accuracy
 
 def Calculate_Val_Far(threshold, dist, actual_issame):
     predict_issame = np.less(dist, threshold)

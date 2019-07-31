@@ -1,8 +1,7 @@
 {
   "name": "config",
   "version": "1.0.0",
-  "experiment": "COXvideo3_finetune",
-
+  "experiment": "BBT_trackfinetune",
 
   "train_mode": {
     "mode": "tripletloss",
@@ -10,8 +9,6 @@
   },
 
   "dataset": {
-
-    "dataloader": "coxfinetune",
 
     "vggface2": {
       "train_dir": "/export/livia/data/lemoineh/vggface2/train_182",
@@ -38,6 +35,10 @@
       "video4_pairs": "dataset_utils/pair_files/coxs2v/video4_pairs.txt"
     },
 
+    "bbt": {
+      "pkl_dataset_path": "/export/livia/data/lemoineh/torch_facetripletloss/roi/labeled_roi.pkl"
+    },
+
     "cross_validation": {
       "num_fold": 10,
       "num_train_folds": 2,
@@ -47,16 +48,14 @@
 
   "output": {
     "output_dir": "/export/livia/data/lemoineh/torch_facetripletloss/models",
-    "save_interval": 10
+    "save_interval": 3
   },
 
   "model": {
     "model_arch": "resnet50",
-    "pretrained_imagenet": false,
+    "pretrained_imagenet": true,
     "checkpoint": true,
     "checkpoint_path": "/export/livia/data/lemoineh/torch_facetripletloss/models/TripletLossPlots6/model_199.pth",
-    "temp1_checkpoint_path": "/export/livia/data/lemoineh/torch_facetripletloss/models/COXvideo2_finetune/model_259.pth",
-    "temp2_checkpoint_path": "/export/livia/data/lemoineh/torch_facetripletloss/models/TripletLossPlots6/model_199.pth",
     "embedding_size": 128
   },
 
@@ -64,25 +63,25 @@
     "margin": 0.2,
     "n_epochs": 1000,
     "image_size": 160,
-    "images_per_person": 5,
+    "images_per_person": 50,
     "people_per_batch": 40,
 
     "optimizer": "SGD",
     "learning_rate": 0.0005,
     "learning_rate_decay_epochs": 4,
-    "learning_rate_decay_factor": 0.98,
+    "learning_rate_decay_factor": 0.99,
     "weight_decay": 2e-4,
     "moving_average_decay": 0.9999,
 
     "triplet_swap": true,
     "random_crop": false,
-    "random_flip": false
+    "random_hor_flip": true
   },
 
   "visdom": {
-    "environment_name": "COXvideo3_finetune",
+    "environment_name": "BBTfinetune",
     "port": 8097,
-    "log_interval": 5
+    "log_interval": 10
   }
 
 }

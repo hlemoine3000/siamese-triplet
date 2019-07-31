@@ -5,6 +5,7 @@ import numpy as np
 import tqdm
 import pandas as pd
 import json
+from sklearn import metrics
 
 import torch
 from torch.utils.data import DataLoader
@@ -59,31 +60,41 @@ def Evaluate(test_loader: DataLoader,
     thresholds = np.arange(0, 4, 0.01)
     subtract_mean = False
 
-    tpr, fpr, accuracy, best_threshold = utils.Calculate_Roc(thresholds, embeddings1, embeddings2,
+    tpr, fpr, accuracy = utils.Calculate_Roc(thresholds, embeddings1, embeddings2,
                                                              np.asarray(issame_array), nrof_folds=nrof_folds,
                                                              distance_metric=distance_metric,
                                                              subtract_mean=subtract_mean)
 
-    thresholds = np.arange(0, 4, 0.001)
-    val, val_std, far, threshold_lowfar = utils.Calculate_Val(thresholds, embeddings1, embeddings2,
-                                                              np.asarray(issame_array),
-                                                              val_far,
-                                                              nrof_folds=nrof_folds,
-                                                              distance_metric=distance_metric,
-                                                              subtract_mean=subtract_mean)
+    # thresholds = np.arange(0, 4, 0.001)
+    # val, val_std, far, threshold_lowfar = utils.Calculate_Val(thresholds, embeddings1, embeddings2,
+    #                                                           np.asarray(issame_array),
+    #                                                           val_far,
+    #                                                           nrof_folds=nrof_folds,
+    #                                                           distance_metric=distance_metric,
+    #                                                           subtract_mean=subtract_mean)
 
     print('Accuracy: {:.3%}+-{:.3%}'.format(np.mean(accuracy), np.std(accuracy)))
-    print('Validation rate: {:.3%}+-{:.3%} @ FAR={:.3%}'.format(val, val_std, far))
-    print('Best threshold: {:.3f}'.format(best_threshold))
+    # print('Validation rate: {:.3%}+-{:.3%} @ FAR={:.3%}'.format(val, val_std, far))
+    print('Positive mean distances: {:.3}'.format(positive_mean_distance))
+    print('Negative mean distances: {:.3}'.format(negative_mean_distance))
 
-    if plotter:
-        if plot_distances:
-            plotter.plot('distance', 'step', name + '_an', 'Pairwise mean distance', step, negative_mean_distance)
-            plotter.plot('distance', 'step', name + '_ap', 'Pairwise mean distance', step, positive_mean_distance)
+    auc = metrics.auc(fpr, tpr)
+    print('Area Under Curve (AUC): %1.5f' % auc)
 
-        plotter.plot('accuracy', 'step', name, 'Accuracy', step, np.mean(accuracy))
-        plotter.plot('validation rate', 'step', name, 'Validation Rate @ FAR={:.3%}'.format(val_far), step, val)
-        plotter.plot('best threshold', 'step', name, 'Best Threshold', step, best_threshold)
+    # if plotter:
+    #     if plot_distances:
+    #         plotter.plot('distance', 'step', name + '_an', 'Pairwise mean distance', step, negative_mean_distance)
+    #         plotter.plot('distance', 'step', name + '_ap', 'Pairwise mean distance', step, positive_mean_distance)
+    #
+    #     plotter.plot('accuracy', 'step', name, 'Accuracy', step, np.mean(accuracy))
+    #     # plotter.plot('validation rate', 'step', name, 'Validation Rate @ FAR={:.3%}'.format(val_far), step, val)
+    #     plotter.plot('auc', 'step', name, 'AUC', step, auc)
+
+    data_dict = {'accuracy': np.mean(accuracy),
+                 'auc': auc}
+
+    return data_dict
+
 
 def parse_arguments(argv):
     parser = argparse.ArgumentParser()
@@ -113,6 +124,17 @@ if __name__ == '__main__':
     # CUDA for PyTorch
     use_cuda = torch.cuda.is_available()
     device = torch.device("cuda:0" if use_cuda else "cpu")
+
+    # Load model
+    if config.model.checkpoint:
+        checkpoint_path = config.model.checkpoint_path
+    else:
+        checkpoint_path = None
+    model = models.load_model(config.model.model_arch,
+                              device,
+                              checkpoint_path=checkpoint_path,
+                              embedding_size=config.model.embedding_size,
+                              imgnet_pretrained=config.model.pretrained_imagenet)
 
     batch_size = (config.hyperparameters.people_per_batch * config.hyperparameters.images_per_person) // 2
     nrof_folds = config.dataset.cross_validation.num_fold
@@ -159,16 +181,6 @@ if __name__ == '__main__':
         print('No datasets selected for evaluation.')
         print('Evaluation terminated.')
         exit(0)
-
-    # Load model
-    print('Loading from checkpoint {}'.format(config.model.checkpoint_path))
-    checkpoint = torch.load(config.model.checkpoint_path)
-    embedding_size = checkpoint['embedding_size']
-
-    model = models.load_model(config.model.model_arch,
-                              embedding_size=embedding_size)
-    model.load_state_dict(checkpoint['model_state_dict'])
-    model = model.to(device)
 
     # Launch evaluation
     for test_name, test_loader in test_loaders_list:
