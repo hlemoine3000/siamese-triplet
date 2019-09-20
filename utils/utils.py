@@ -25,33 +25,50 @@ class AverageMeter:
     def __init__(self):
         self.reset()
 
-    def reset(self):
+    def reset(self) -> None:
         self.values = []
         self.counter = 0
 
-    def append(self, val):
+    def append(self, val) -> None:
         self.values.append(val)
         self.counter += 1
 
     @property
-    def val(self):
+    def val(self) -> float:
         return self.values[-1]
 
     @property
-    def avg(self):
+    def avg(self) -> float:
         if len(self.values) != 0:
             return sum(self.values) / len(self.values)
         else:
             return 0
 
-    @property
-    def last_avg(self):
+    def last_avg(self) -> float:
         if self.counter == 0:
             return self.latest_avg
         else:
             self.latest_avg = sum(self.values[-self.counter:]) / self.counter
             self.counter = 0
             return self.latest_avg
+
+
+class AverageData_Dict(object):
+
+    def __init__(self):
+        self.data_dict = {}
+
+    @property
+    def get_avg(self) -> dict:
+        return {k:d.avg for k,d in self.data_dict.items()}
+
+    def get_last_avg(self) -> dict:
+        return {k:d.last_avg() for k,d in self.data_dict.items()}
+
+    def __getitem__(self, attr: str) -> AverageMeter:
+        if attr not in self.data_dict.keys():
+            self.data_dict[attr] = AverageMeter()
+        return self.data_dict[attr]
 
 
 class AttrDict(dict):

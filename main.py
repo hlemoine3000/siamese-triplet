@@ -90,7 +90,7 @@ def main(args):
                                                       config.hyperparameters.people_per_batch,
                                                       config.hyperparameters.images_per_person)
 
-    test_loaders_list = dataloaders.Get_TestDataloaders(config,
+    test_loaders_list = dataloaders.get_testdataloaders(config,
                                                         data_transform,
                                                         test_batch_size,
                                                         test_folds,
@@ -132,7 +132,7 @@ def main(args):
 
     model = model.to(device)
 
-    plotter = utils.VisdomLinePlotter(env_name=config.visdom.environment_name, port=config.visdom.port)
+    plotter = utils.VisdomPlotter(env_name=config.visdom.environment_name, port=config.visdom.port)
 
     print('Quadruplet loss training mode.')
     miner = miners.SemihardNegativeQuadrupletSelector(config.hyperparameters.margin)

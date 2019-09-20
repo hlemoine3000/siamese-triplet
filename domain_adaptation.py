@@ -17,6 +17,9 @@ from ml_utils import miners
 import models
 import utils
 
+# try:
+#     from ape
+
 
 def parse_arguments(argv):
     parser = argparse.ArgumentParser()
@@ -32,6 +35,23 @@ def path_leaf(path):
     return tail or ntpath.basename(head)
 
 
+def generate_experiment_name(config):
+    experiment_name = config.experiment
+
+    experiment_name += '_L'
+    if config.hyperparameters.lamda[0] > 0.0:
+        experiment_name += '1'
+    if config.hyperparameters.lamda[1] > 0.0:
+        experiment_name += '2'
+
+    experiment_name += '_m{}'.format(config.hyperparameters.margin)
+
+    if config.miner == 'supervised_dualtriplet':
+        experiment_name += '_supervised'
+
+    return experiment_name
+
+
 def main(args):
 
     print('Feature extractor training.')
@@ -40,14 +60,15 @@ def main(args):
         config = utils.AttrDict(json.load(json_config_file))
 
     # Set up output directory
-    # subdir = datetime.strftime(datetime.now(), '%Y%m%d-%H%M%S')
-    subdir = config.visdom.environment_name
-    model_dir = os.path.join(os.path.expanduser(config.output.output_dir), subdir)
-    if not os.path.isdir(model_dir):  # Create the model directory if it doesn't exist
-        os.makedirs(model_dir)
-        print('Model saved at {}'.format(model_dir))
-    # else:
-    #     raise Exception('Environment name {} already taken.'.format(subdir))
+    experiment_name = generate_experiment_name(config)
+    if os.path.isdir(os.path.join(os.path.expanduser(config.output.output_dir), experiment_name)):
+        dir_count = 0
+        experiment_name += '_2'
+        while os.path.isdir(os.path.join(os.path.expanduser(config.output.output_dir), experiment_name)):
+            experiment_name = experiment_name[-2] + '_{}'.format(dir_count)
+    model_dir = os.path.join(os.path.expanduser(config.output.output_dir), experiment_name)
+    os.makedirs(model_dir)
+    print('Model saved at {}'.format(model_dir))
 
     config_filename = path_leaf(args.config)
     copyfile(args.config, os.path.join(model_dir, config_filename))
@@ -73,31 +94,36 @@ def main(args):
 
     optimizer = optim.SGD(model.parameters(), lr=config.hyperparameters.learning_rate, momentum=0.9, nesterov=True, weight_decay=2e-4)
 
+    # if APEX_AVAILABLE and use_amp:
+
+
     scheduler = lr_scheduler.ExponentialLR(optimizer, config.hyperparameters.learning_rate_decay_factor)
 
     model = model.to(device)
 
-    plotter = utils.VisdomLinePlotter(env_name=config.visdom.environment_name, port=config.visdom.port)
+    plotter = utils.VisdomPlotter(env_name=experiment_name, port=config.visdom.port)
 
     print('DualTriplet loss training mode.')
-    miner = miners.get_miner(config.mode,
+    miner = miners.get_miner(config.miner,
                              config.hyperparameters.margin,
-                             config.hyperparameters.people_per_batch)
+                             config.hyperparameters.people_per_batch,
+                             plotter,
+                             deadzone_ratio=config.hyperparameters.deadzone_ratio)
 
     loss = losses.DualtripletLoss(config.hyperparameters.margin,
-                                  config.hyperparameters.lamda)
+                                  config.hyperparameters.lamda,
+                                  plotter)
 
-    model_trainer = trainer.get_trainer(config.mode,
-                                        model,
-                                        miner,
-                                        loss,
-                                        optimizer,
-                                        scheduler,
-                                        device,
-                                        plotter,
-                                        config.hyperparameters.margin,
-                                        config.model.embedding_size,
-                                        config.visdom.log_interval)
+    model_trainer = trainer.Dualtriplet_Trainer(model,
+                                                miner,
+                                                loss,
+                                                optimizer,
+                                                scheduler,
+                                                device,
+                                                plotter,
+                                                config.hyperparameters.margin,
+                                                config.model.embedding_size,
+                                                batch_size=config.hyperparameters.batch_size)
 
     if not os.path.isdir(model_dir):  # Create the model directory if it doesn't exist
         os.makedirs(model_dir)
@@ -108,64 +134,34 @@ def main(args):
     while epoch < config.hyperparameters.n_epochs:
 
         # Validation
-        for test_name, test_loader in test_loaders_list:
+        for test_name, test_loader, eval_function in test_loaders_list:
             print('\nEvaluation on {}'.format(test_name))
-            eval_data = model_trainer.Evaluate(test_loader,
-                                         name=test_name,
-                                         nrof_folds=nrof_folds,
-                                         val_far=config.hyperparameters.val_far)
-
-            plotter.plot('accuracy', 'epoch', test_name, 'Accuracy', epoch, eval_data['accuracy'])
-            plotter.plot('auc', 'epoch', test_name, 'AUC', epoch, eval_data['auc'])
+            eval_function(test_loader,
+                          model,
+                          device,
+                          test_name,
+                          plotter=plotter,
+                          epoch=epoch,
+                          nrof_folds=nrof_folds,
+                          distance_metric=0,
+                          val_far=config.hyperparameters.val_far)
 
         # Training
         print('\nExperimentation {}'.format(config.experiment))
         print('Train Epoch {}'.format(epoch))
-        train_data = model_trainer.Train_Epoch(source_loader, target_loader)
-
-        if train_data is None:
-            # Take last training results
-            train_data = last_train_data
-        else:
-            last_train_data = train_data
-
-        plotter.plot('learning rate', 'epoch', 'train', 'Learning Rate',
-                     epoch, train_data['lr'])
-
-        # Loss stats
-        plotter.plot('loss', 'epoch', 'L12', 'Losses', epoch, train_data['L12'])
-        plotter.plot('loss', 'epoch', 'L1', 'Losses', epoch, train_data['L1'])
-        plotter.plot('loss', 'epoch', 'L2', 'Losses', epoch, train_data['L2'])
-
-        # Mining stats
-        plotter.plot('dualtriplet number', 'epoch', 'num dualtriplet', 'Dual Triplets Mining',
-                         epoch, train_data['num_dualtriplets'])
-        plotter.plot('dualtriplet number', 'epoch', 'num srctriplet', 'Dual Triplets Mining',
-                          epoch, train_data['num_srctriplets'])
-        plotter.plot('dualtriplet number', 'epoch', 'num tgttriplet', 'Dual Triplets Mining',
-                          epoch, train_data['num_tgttriplets'])
-        plotter.plot('num clusters', 'epoch', 'train', 'Number of Clusters',
-                          epoch, train_data['n_clusters'])
-        plotter.plot('scores', 'epoch', 'train', 'Clustering Scores',
-                          epoch, train_data['clustering_scores'])
-
-        # Distance stats
-        plotter.plot('distance', 'epoch', 'an', 'Pairwise mean distance',
-                          epoch, train_data['dan'])
-        plotter.plot('distance', 'epoch', 'ap', 'Pairwise mean distance',
-                          epoch, train_data['dap'])
+        model_trainer.Train_Epoch(source_loader, target_loader, epoch)
 
         # Save model
-        if not (epoch + 1) % config.output.save_interval:
-
-            model_file_path = os.path.join(model_dir, 'model_{}.pth'.format(epoch))
-            print('\nSave model at {}'.format(model_file_path))
-            torch.save({'epoch': epoch,
-                        'model_state_dict': utils.state_dict_to_cpu(model.state_dict()),
-                        'optimizer_state_dict': optimizer.state_dict(),
-                        'scheduler_state_dict': scheduler.state_dict(),
-                        'embedding_size': config.model.embedding_size
-                        }, model_file_path)
+        # if not (epoch + 1) % config.output.save_interval:
+        #
+        #     model_file_path = os.path.join(model_dir, 'model_{}.pth'.format(epoch))
+        #     print('\nSave model at {}'.format(model_file_path))
+        #     torch.save({'epoch': epoch,
+        #                 'model_state_dict': utils.state_dict_to_cpu(model.state_dict()),
+        #                 'optimizer_state_dict': optimizer.state_dict(),
+        #                 'scheduler_state_dict': scheduler.state_dict(),
+        #                 'embedding_size': config.model.embedding_size
+        #                 }, model_file_path)
 
         epoch += 1
 

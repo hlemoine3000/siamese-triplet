@@ -9,7 +9,6 @@
   },
 
   "dataset": {
-
     "vggface2": {
       "train_dir": "/export/livia/data/lemoineh/vggface2/train_182",
       "test_dir": "/export/livia/data/lemoineh/vggface2/test_182",
@@ -44,21 +43,21 @@
 
   "output": {
     "output_dir": "/export/livia/data/lemoineh/torch_facetripletloss/models",
-    "save_interval": 10
+    "save_interval": 50
   },
 
   "model": {
-    "model_arch": "ir50",
+    "model_arch": "resnet50",
     "pretrained_imagenet": true,
     "checkpoint": true,
-    "checkpoint_path": "/export/livia/data/lemoineh/torch_facetripletloss/backbone_ir50_ms1m_epoch63.pth",
-    "embedding_size": 512
+    "checkpoint_path": "/export/livia/data/lemoineh/torch_facetripletloss/models/TripletLossPlots6/model_219.pth",
+    "embedding_size": 128
   },
 
   "hyperparameters": {
-    "margin": 0.2,
-    "n_epochs": 1000,
-    "image_size": 112,
+    "margin": 1.0,
+    "n_epochs": 50,
+    "image_size": 160,
     "images_per_person": 5,
     "people_per_batch": 40,
 
@@ -68,20 +67,12 @@
     "learning_rate_decay_factor": 0.99,
     "weight_decay": 2e-4,
     "moving_average_decay": 0.9999,
-    "val_far": 1e-2,
+    "val_far": 1e-3,
+    "batch_size": 64,
 
     "triplet_swap": true,
     "random_crop": false,
     "random_hor_flip": true
-  },
-
-  "embeddings_visualisation": {
-    "num_class": 5,
-    "num_sample_per_class": 10,
-
-    "tsne":{
-      "perplexity": 30
-    }
   },
 
   "visdom": {

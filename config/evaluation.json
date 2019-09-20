@@ -3,7 +3,6 @@
   "version": "1.0.0",
 
   "dataset": {
-
     "vggface2": {
       "train_dir": "/export/livia/data/lemoineh/vggface2/train_182",
       "test_dir": "/export/livia/data/lemoineh/vggface2/test_182",
@@ -29,10 +28,16 @@
       "video4_pairs": "dataset_utils/pair_files/coxs2v/video4_pairs.txt"
     },
 
+    "bbt": {
+      "ep01_dir": "/export/livia/data/lemoineh/BBT/ep01",
+      "video_track_path": "/export/livia/data/lemoineh/BBT/ep01",
+      "pkl_dataset_path": "/export/livia/data/lemoineh/torch_facetripletloss/roi/labeled_roi.pkl"
+    },
+
     "cross_validation": {
       "num_fold": 10,
-      "num_train_folds": 2,
-      "num_val_folds": 1
+      "num_train_folds": 3,
+      "num_val_folds": 0
     }
   },
 
@@ -40,8 +45,7 @@
     "model_arch": "resnet50",
     "pretrained_imagenet": false,
     "checkpoint": true,
-    "checkpoint_path": "/export/livia/data/lemoineh/torch_facetripletloss/models/COXvideo2_finetune/model_209.pth",
-    "checkpoint_path2": "/export/livia/data/lemoineh/torch_facetripletloss/models/TripletLossPlots6/model_199.pth",
+    "checkpoint_path": "/export/livia/data/lemoineh/torch_facetripletloss/models/TripletLossPlots6/model_219.pth",
     "embedding_size": 128
   },
 
@@ -59,7 +63,7 @@
     "weight_decay": 2e-4,
     "moving_average_decay": 0.9999,
 
-    "val_far": 1e-2,
+    "val_far": 1e-3,
 
     "triplet_swap": true,
     "random_crop": false,
@@ -73,6 +77,12 @@
     "tsne":{
       "perplexity": 30
     }
+  },
+
+  "visdom": {
+    "environment_name": "evaluation_results",
+    "port": 8097,
+    "log_interval": 5
   }
 
 }

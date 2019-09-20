@@ -1,32 +1,29 @@
 
 import argparse
-import configparser
-import cv2
-import os
-import time
 import sys
-import signal
 import json
 import tqdm
-from PIL import Image
-from datetime import datetime
 import numpy as np
 
 import torch
 from torchvision import transforms
 from torch.utils import data
-from sklearn.metrics import confusion_matrix, accuracy_score
-from sklearn.metrics.cluster import v_measure_score
+from sklearn.cluster import SpectralClustering
+from sklearn import metrics
 
 import utils
-from utils.video import Video_Reader
-from utils.visualization import draw_bounding_box_on_image_array
-from utils import plotter
-from ml_utils import ml_utils, clustering
+from ml_utils import clustering
 import models
 from dataset_utils.dataset import ImageFolderTrackDataset
 from vis_embeddings import TSNE_Visualizer
 from copy import deepcopy
+
+
+def purity_score(y_true, y_pred):
+    # compute contingency matrix (also called confusion matrix)
+    contingency_matrix = metrics.cluster.contingency_matrix(y_true, y_pred)
+    # return purity
+    return np.sum(np.amax(contingency_matrix, axis=0)) / np.sum(contingency_matrix)
 
 
 def switch_labels(prediction, groundtruth):
@@ -34,7 +31,7 @@ def switch_labels(prediction, groundtruth):
     # Fit prediction labels to the groundtruth labels
     for i in range(len(np.unique(prediction))):
         # Find index of the most predicted class
-        conf_matrix = confusion_matrix(groundtruth, pred)
+        conf_matrix = metrics.confusion_matrix(groundtruth, pred)
         max_idx = np.where(conf_matrix[i] == np.amax(conf_matrix[i]))[0][0]
         # Do not perform permutation on previous classes
         if max_idx > i:
@@ -49,8 +46,10 @@ def switch_labels(prediction, groundtruth):
 
 
 def compute_metrics(prediction, groundtruth):
-    acc = accuracy_score(groundtruth, prediction)
-    v_score = v_measure_score(groundtruth, prediction)
+    purity = purity_score(groundtruth, prediction)
+    acc = metrics.accuracy_score(groundtruth, prediction)
+    v_score = metrics.v_measure_score(groundtruth, prediction)
+    print('Purity: {}'.format(purity))
     print('Clustering accuracy: {}'.format(acc))
     print('V measure score: {}'.format(v_score))
 
@@ -65,13 +64,6 @@ def parse_arguments(argv):
 
 
 if __name__ == '__main__':
-
-    # ffmpeg - i bbtS01E01.mkv - vf scale = 1024:576 - r 25 - codec: a copy outputbbt1.mkv
-
-    annotation_path = '/export/livia/data/lemoineh/CVPR2013_PersonID_data/bbt_s01e01_facetracks.mat'
-    movie_path = '/export/livia/data/lemoineh/BBT/bbts01e01.mkv'
-    # checkpoint_path = '/export/livia/data/lemoineh/torch_facetripletloss/models/BBTfinetune2/model_209.pth'
-    video_out_dir = '/export/livia/data/lemoineh/video/'
 
     max_frame = 100000
 
@@ -109,9 +101,9 @@ if __name__ == '__main__':
         transforms.ToTensor()
     ])
 
-    video_dataset = ImageFolderTrackDataset('/export/livia/data/lemoineh/BBT/ep01_2', transform=data_transform)
+    video_dataset = ImageFolderTrackDataset('/export/livia/data/lemoineh/BBT/ep01', transform=data_transform)
     video_dataloader = data.DataLoader(video_dataset,
-                                       num_workers=2,
+                                       num_workers=8,
                                        batch_size=100,
                                        pin_memory=True)
     # Load model
@@ -173,6 +165,8 @@ if __name__ == '__main__':
     tracklabels = []
     gt_tracklabels = []
     track_classes = np.unique(imagetrack_labels)
+    # Compute mean of each track
+    print('Compute mean representation for each track.')
     for track_class in track_classes:
         features_indexes = [i for i, e in enumerate(imagetrack_labels) if e == track_class]
         features_track = features[features_indexes]
@@ -181,33 +175,52 @@ if __name__ == '__main__':
         gt_tracklabels.append(gt_labels[features_indexes[0]])
     mean_feature_tracklist = np.asarray(mean_feature_tracklist)
 
-    pred_tracklabels_list, silhouette_scores, range_n_clusters = clustering.hac_silhouetteanalysis(
-        mean_feature_tracklist,
-        7,
-        verbose=True)
-    best_n_clusters_idx = silhouette_scores.index(max(silhouette_scores))
-    for i in range(len(pred_tracklabels_list)):
+    # Find best number of Cluster
+    print('Searching best k clusters.')
+    affinity_matrix = clustering.getAffinityMatrix(mean_feature_tracklist, k=7)
+    nb_clusters, eigenvalues, eigenvectors = clustering.eigenDecomposition(affinity_matrix)
+    print('Number of clusters: {}'.format(nb_clusters))
 
-        print('___________________')
-        print('Number of clusters: {}'.format(range_n_clusters[i]))
-        print('Silhouette score: {}'.format(silhouette_scores[i]))
-
-        pred_tracklabels = pred_tracklabels_list[i]
-        # Fit prediction labels to the groundtruth labels
-        pred_tracklabels = switch_labels(pred_tracklabels, gt_tracklabels)
-
-        tl_conf_matrix = confusion_matrix(gt_tracklabels, pred_tracklabels)
-        compute_metrics(pred_tracklabels, gt_tracklabels)
-        print('Confusion matrix:')
-        print(tl_conf_matrix)
+    # Perform clustering
+    # print('Performing spectral clustering.')
+    # clustering = SpectralClustering(n_clusters=nb_clusters[0],
+    #                                       assign_labels="discretize",
+    #                                       random_state=0).fit(mean_feature_tracklist)
+    # pred_tracklabels = clustering.labels_
+    #
+    # # Fit prediction labels to the groundtruth labels
+    # pred_tracklabels = switch_labels(pred_tracklabels, gt_tracklabels)
+    #
+    # tl_conf_matrix = confusion_matrix(gt_tracklabels, pred_tracklabels)
+    # compute_metrics(pred_tracklabels, gt_tracklabels)
+    # print('Confusion matrix:')
+    # print(tl_conf_matrix)
 
     # Visdom visualisation
     tsne_vis = TSNE_Visualizer()
     tsne_vis.train(mean_feature_tracklist)
-    tsne_vis.plot(np.asarray(tracklabels), env_name='BBT_vis', name='Emb_visTrack')
     tsne_vis.plot(np.asarray(gt_tracklabels), env_name='BBT_vis', name='Emb_visGT')
-    # tsne_vis.plot(pred_tracklabels,env_name='BBT_vis', name='Emb_visPred')
-    for lbl, num_cluster in zip(pred_tracklabels_list, range_n_clusters):
-        tsne_vis.plot(lbl,env_name='BBT_vis', name='Emb_visPred{}'.format(num_cluster))
+
+    print('Performing spectral clustering.')
+    for k in range(2, 7):
+
+        clustering = SpectralClustering(n_clusters=k,
+                                        assign_labels="discretize",
+                                        random_state=0).fit(mean_feature_tracklist)
+        pred_tracklabels = clustering.labels_
+
+        print('___________________')
+        print('Number of clusters: {}'.format(k))
+
+        # Fit prediction labels to the groundtruth labels
+        compute_metrics(pred_tracklabels, gt_tracklabels)
+        pred_tracklabels = switch_labels(pred_tracklabels, gt_tracklabels)
+
+        tl_conf_matrix = metrics.confusion_matrix(gt_tracklabels, pred_tracklabels)
+        compute_metrics(pred_tracklabels, gt_tracklabels)
+        print('Confusion matrix:')
+        print(tl_conf_matrix)
+
+        tsne_vis.plot(pred_tracklabels, env_name='BBT_vis', name='Emb_visPred{}'.format(k))
 
     print('Process completed.')

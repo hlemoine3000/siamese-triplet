@@ -1,6 +1,6 @@
 
 import utils
-from dataset_utils import coxs2v, vggface2
+from dataset_utils import coxs2v, vggface2, bbt
 from dataset_utils import dataloaders
 from torchvision import transforms
 
@@ -47,17 +47,12 @@ def Get_DADataloaders(exp_name, config):
                                                    config.hyperparameters.images_per_person,
                                                    video_only=True)
 
-        test_loaders_list = dataloaders.Get_TestDataloaders(config,
+        test_loaders_list = dataloaders.get_testdataloaders(config,
                                                             eval_transforms,
                                                             test_batch_size,
                                                             test_folds,
                                                             nrof_folds,
-                                                            is_vggface2=False,
-                                                            is_lfw=False,
-                                                            is_cox_video1=False,
-                                                            is_cox_video2=True,
-                                                            is_cox_video3=False,
-                                                            is_cox_video4=True)
+                                                            ['cox_video2', 'cox_video3'])
 
     elif exp_name == 'da_video1_to_video3':
         source_loader = coxs2v.get_coxs2v_trainset(config.dataset.coxs2v.still_dir,
@@ -79,17 +74,12 @@ def Get_DADataloaders(exp_name, config):
                                                    config.hyperparameters.images_per_person,
                                                    video_only=True)
 
-        test_loaders_list = dataloaders.Get_TestDataloaders(config,
+        test_loaders_list = dataloaders.get_testdataloaders(config,
                                                             eval_transforms,
                                                             test_batch_size,
                                                             test_folds,
                                                             nrof_folds,
-                                                            is_vggface2=False,
-                                                            is_lfw=False,
-                                                            is_cox_video1=True,
-                                                            is_cox_video2=False,
-                                                            is_cox_video3=True,
-                                                            is_cox_video4=False)
+                                                            ['cox_video1', 'cox_video3'])
 
     elif exp_name == 'da_video1_to_video4':
         source_loader = coxs2v.get_coxs2v_trainset(config.dataset.coxs2v.still_dir,
@@ -111,17 +101,12 @@ def Get_DADataloaders(exp_name, config):
                                                    config.hyperparameters.images_per_person,
                                                    video_only=True)
 
-        test_loaders_list = dataloaders.Get_TestDataloaders(config,
+        test_loaders_list = dataloaders.get_testdataloaders(config,
                                                             eval_transforms,
                                                             test_batch_size,
                                                             test_folds,
                                                             nrof_folds,
-                                                            is_vggface2=False,
-                                                            is_lfw=False,
-                                                            is_cox_video1=True,
-                                                            is_cox_video2=False,
-                                                            is_cox_video3=False,
-                                                            is_cox_video4=True)
+                                                            ['cox_video1', 'cox_video4'])
 
     elif exp_name == 'da_video2_to_video3':
         source_loader = coxs2v.get_coxs2v_trainset(config.dataset.coxs2v.still_dir,
@@ -143,17 +128,12 @@ def Get_DADataloaders(exp_name, config):
                                                    config.hyperparameters.images_per_person,
                                                    video_only=True)
 
-        test_loaders_list = dataloaders.Get_TestDataloaders(config,
+        test_loaders_list = dataloaders.get_testdataloaders(config,
                                                             eval_transforms,
                                                             test_batch_size,
                                                             test_folds,
                                                             nrof_folds,
-                                                            is_vggface2=False,
-                                                            is_lfw=False,
-                                                            is_cox_video1=False,
-                                                            is_cox_video2=True,
-                                                            is_cox_video3=True,
-                                                            is_cox_video4=False)
+                                                            ['cox_video2', 'cox_video3'])
 
     elif exp_name == 'da_video3_to_video1':
         source_loader = coxs2v.get_coxs2v_trainset(config.dataset.coxs2v.still_dir,
@@ -175,17 +155,12 @@ def Get_DADataloaders(exp_name, config):
                                                    config.hyperparameters.images_per_person,
                                                    video_only=True)
 
-        test_loaders_list = dataloaders.Get_TestDataloaders(config,
+        test_loaders_list = dataloaders.get_testdataloaders(config,
                                                             eval_transforms,
                                                             test_batch_size,
                                                             test_folds,
                                                             nrof_folds,
-                                                            is_vggface2=False,
-                                                            is_lfw=False,
-                                                            is_cox_video1=True,
-                                                            is_cox_video2=False,
-                                                            is_cox_video3=True,
-                                                            is_cox_video4=False)
+                                                            ['cox_video1', 'cox_video3'])
 
     elif exp_name == 'da_video3_to_video4':
         source_loader = coxs2v.get_coxs2v_trainset(config.dataset.coxs2v.still_dir,
@@ -207,17 +182,12 @@ def Get_DADataloaders(exp_name, config):
                                                    config.hyperparameters.images_per_person,
                                                    video_only=True)
 
-        test_loaders_list = dataloaders.Get_TestDataloaders(config,
+        test_loaders_list = dataloaders.get_testdataloaders(config,
                                                             eval_transforms,
                                                             test_batch_size,
                                                             test_folds,
                                                             nrof_folds,
-                                                            is_vggface2=False,
-                                                            is_lfw=False,
-                                                            is_cox_video1=False,
-                                                            is_cox_video2=False,
-                                                            is_cox_video3=True,
-                                                            is_cox_video4=True)
+                                                            ['cox_video3', 'cox_video4'])
 
     elif exp_name == 'da_video4_to_video3_notrack':
         source_loader = coxs2v.get_coxs2v_trainset(config.dataset.coxs2v.still_dir,
@@ -240,17 +210,12 @@ def Get_DADataloaders(exp_name, config):
                                                    balanced=False,
                                                    video_only=True)
 
-        test_loaders_list = dataloaders.Get_TestDataloaders(config,
+        test_loaders_list = dataloaders.get_testdataloaders(config,
                                                             eval_transforms,
                                                             test_batch_size,
                                                             test_folds,
                                                             nrof_folds,
-                                                            is_vggface2=False,
-                                                            is_lfw=False,
-                                                            is_cox_video1=True,
-                                                            is_cox_video2=True,
-                                                            is_cox_video3=True,
-                                                            is_cox_video4=True)
+                                                            ['cox_video3', 'cox_video4'])
 
     elif exp_name == 'da_video4_to_video3':
         source_loader = coxs2v.get_coxs2v_trainset(config.dataset.coxs2v.still_dir,
@@ -272,51 +237,12 @@ def Get_DADataloaders(exp_name, config):
                                                    config.hyperparameters.images_per_person,
                                                    video_only=True)
 
-        test_loaders_list = dataloaders.Get_TestDataloaders(config,
+        test_loaders_list = dataloaders.get_testdataloaders(config,
                                                             eval_transforms,
                                                             test_batch_size,
                                                             test_folds,
                                                             nrof_folds,
-                                                            is_vggface2=False,
-                                                            is_lfw=False,
-                                                            is_cox_video1=False,
-                                                            is_cox_video2=False,
-                                                            is_cox_video3=True,
-                                                            is_cox_video4=True)
-
-    elif exp_name == 'da_video4_to_video3_lessdata':
-        source_loader = coxs2v.get_coxs2v_trainset(config.dataset.coxs2v.still_dir,
-                                                   config.dataset.coxs2v.video4_dir,
-                                                   config.dataset.coxs2v.video4_pairs,
-                                                   train_folds,
-                                                   nrof_folds,
-                                                   train_transforms,
-                                                   config.hyperparameters.people_per_batch,
-                                                   config.hyperparameters.images_per_person)
-
-        target_loader = coxs2v.get_coxs2v_trainset(config.dataset.coxs2v.still_dir,
-                                                   config.dataset.coxs2v.video3_dir,
-                                                   config.dataset.coxs2v.video3_pairs,
-                                                   val_folds,
-                                                   nrof_folds,
-                                                   train_transforms,
-                                                   config.hyperparameters.people_per_batch,
-                                                   config.hyperparameters.images_per_person,
-                                                   video_only=True,
-                                                   samples_division_list=[0.2, 0.8],
-                                                   div_idx=0)
-
-        test_loaders_list = dataloaders.Get_TestDataloaders(config,
-                                                            eval_transforms,
-                                                            test_batch_size,
-                                                            test_folds,
-                                                            nrof_folds,
-                                                            is_vggface2=False,
-                                                            is_lfw=False,
-                                                            is_cox_video1=False,
-                                                            is_cox_video2=False,
-                                                            is_cox_video3=True,
-                                                            is_cox_video4=True)
+                                                            ['cox_video3', 'cox_video4'])
 
     elif exp_name == 'da_video4_to_video1':
         source_loader = coxs2v.get_coxs2v_trainset(config.dataset.coxs2v.still_dir,
@@ -338,17 +264,12 @@ def Get_DADataloaders(exp_name, config):
                                                    config.hyperparameters.images_per_person,
                                                    video_only=True)
 
-        test_loaders_list = dataloaders.Get_TestDataloaders(config,
+        test_loaders_list = dataloaders.get_testdataloaders(config,
                                                             eval_transforms,
                                                             test_batch_size,
                                                             test_folds,
                                                             nrof_folds,
-                                                            is_vggface2=False,
-                                                            is_lfw=False,
-                                                            is_cox_video1=True,
-                                                            is_cox_video2=False,
-                                                            is_cox_video3=False,
-                                                            is_cox_video4=True)
+                                                            ['cox_video1', 'cox_video4'])
 
     elif exp_name == 'da_vggface2_to_video1':
         source_loader = vggface2.get_vggface2_trainset(config.dataset.vggface2.train_dir,
@@ -366,17 +287,12 @@ def Get_DADataloaders(exp_name, config):
                                                    config.hyperparameters.images_per_person,
                                                    video_only=True)
 
-        test_loaders_list = dataloaders.Get_TestDataloaders(config,
+        test_loaders_list = dataloaders.get_testdataloaders(config,
                                                             eval_transforms,
                                                             test_batch_size,
                                                             test_folds,
                                                             nrof_folds,
-                                                            is_vggface2=False,
-                                                            is_lfw=True,
-                                                            is_cox_video1=True,
-                                                            is_cox_video2=False,
-                                                            is_cox_video3=False,
-                                                            is_cox_video4=False)
+                                                            ['lfw', 'cox_video1'])
 
     elif exp_name == 'da_vggface2_to_video2':
         source_loader = vggface2.get_vggface2_trainset(config.dataset.vggface2.train_dir,
@@ -394,17 +310,12 @@ def Get_DADataloaders(exp_name, config):
                                                    config.hyperparameters.images_per_person,
                                                    video_only=True)
 
-        test_loaders_list = dataloaders.Get_TestDataloaders(config,
+        test_loaders_list = dataloaders.get_testdataloaders(config,
                                                             eval_transforms,
                                                             test_batch_size,
                                                             test_folds,
                                                             nrof_folds,
-                                                            is_vggface2=False,
-                                                            is_lfw=True,
-                                                            is_cox_video1=False,
-                                                            is_cox_video2=True,
-                                                            is_cox_video3=False,
-                                                            is_cox_video4=False)
+                                                            ['lfw', 'cox_video2'])
 
     elif exp_name == 'da_vggface2_to_video3':
         source_loader = vggface2.get_vggface2_trainset(config.dataset.vggface2.train_dir,
@@ -412,7 +323,6 @@ def Get_DADataloaders(exp_name, config):
                                                        config.hyperparameters.people_per_batch,
                                                        config.hyperparameters.images_per_person)
 
-        target_folds = train_folds + val_folds
         target_loader = coxs2v.get_coxs2v_trainset(config.dataset.coxs2v.still_dir,
                                                    config.dataset.coxs2v.video3_dir,
                                                    config.dataset.coxs2v.video3_pairs,
@@ -423,18 +333,53 @@ def Get_DADataloaders(exp_name, config):
                                                    config.hyperparameters.images_per_person,
                                                    video_only=True)
 
-        test_loaders_list = dataloaders.Get_TestDataloaders(config,
+        test_loaders_list = dataloaders.get_testdataloaders(config,
                                                             eval_transforms,
                                                             test_batch_size,
                                                             test_folds,
                                                             nrof_folds,
-                                                            is_vggface2=False,
-                                                            is_lfw=True,
-                                                            is_cox_video1=False,
-                                                            is_cox_video2=False,
-                                                            is_cox_video3=True,
-                                                            is_cox_video4=False)
+                                                            ['lfw', 'cox_video3'])
 
+    elif exp_name == 'da_vggface2_to_video4':
+        source_loader = vggface2.get_vggface2_trainset(config.dataset.vggface2.train_dir,
+                                                       train_transforms,
+                                                       config.hyperparameters.people_per_batch,
+                                                       config.hyperparameters.images_per_person)
+
+        target_folds = train_folds + val_folds
+        target_loader = coxs2v.get_coxs2v_trainset(config.dataset.coxs2v.still_dir,
+                                                   config.dataset.coxs2v.video4_dir,
+                                                   config.dataset.coxs2v.video4_pairs,
+                                                   train_folds,
+                                                   nrof_folds,
+                                                   train_transforms,
+                                                   config.hyperparameters.people_per_batch,
+                                                   config.hyperparameters.images_per_person,
+                                                   video_only=True)
+
+        test_loaders_list = dataloaders.get_testdataloaders(config,
+                                                            eval_transforms,
+                                                            test_batch_size,
+                                                            test_folds,
+                                                            nrof_folds,
+                                                            ['lfw', 'cox_video4'])
+
+    elif exp_name == 'da_bbt':
+        source_loader = bbt.get_trainset(config.dataset.bbt.pkl_dataset_path,
+                                        config.hyperparameters.images_per_person,
+                                        transform=train_transforms)
+
+        target_loader = dataloaders.Get_ImageFolderLoader(config.dataset.bbt.video_track_path,
+                                                          train_transforms,
+                                                          config.hyperparameters.people_per_batch,
+                                                          config.hyperparameters.images_per_person)
+
+        test_loaders_list = dataloaders.get_testdataloaders(config,
+                                                            eval_transforms,
+                                                            test_batch_size,
+                                                            test_folds,
+                                                            nrof_folds,
+                                                            ['lfw', 'bbt_ep01'])
     else:
         raise Exception('Experiment {} does not exist.'.format(exp_name))
 

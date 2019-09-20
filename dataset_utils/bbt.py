@@ -8,7 +8,7 @@ import torch
 from torch.utils import data
 
 from utils.video import Video_Reader
-from dataset_utils.dataset import TrackDataset
+from dataset_utils.dataset import TrackDataset, ImageFolderTrackDataset
 from dataset_utils.sampler import TrackSampler
 
 # original_width = 1920
@@ -208,8 +208,18 @@ def get_trainset(pkl_file,
     sampler = TrackSampler(dataset,
                            samples_per_class)
     dataloader = torch.utils.data.DataLoader(dataset,
-                                             num_workers=1,
+                                             num_workers=8,
                                              batch_sampler=sampler,
                                              pin_memory=True)
 
     return dataloader
+
+def get_testset(test_dir,
+                data_transform,
+                batch_size):
+
+    video_dataset = ImageFolderTrackDataset(test_dir, transform=data_transform)
+    return data.DataLoader(video_dataset,
+                                       num_workers=8,
+                                       batch_size=batch_size,
+                                       pin_memory=True)

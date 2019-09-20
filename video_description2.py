@@ -1,11 +1,8 @@
 
 import argparse
-import configparser
 import cv2
 import os
-import time
 import sys
-import signal
 import json
 import tqdm
 from PIL import Image
@@ -22,15 +19,22 @@ import utils
 from utils.fast_dt import FAST_DT
 from utils.video import Video_Reader
 from utils.visualization import draw_bounding_box_on_image_array
-from utils import plotter
 from ml_utils import ml_utils, clustering
 import models
-from dataset_utils.bbt import Read_Annotation
 from dataset_utils.dataset import NumpyDataset
 from vis_embeddings import TSNE_Visualizer
 
-images_path = 'images/'
-database_output_path = 'database/'
+color = {0: '#000000',
+         1: '#FF0000',
+         2: '#00FF00',
+         3: '#0000FF',
+         4: '#FFFF00',
+         5: '#00FFFF',
+         6: '#FF00FF',
+         7: '#800000',
+         8: '#808000',
+         9: '#e4ab2b',
+         10: '#008ff8'}
 
 
 def switch_labels(prediction, groundtruth):
@@ -59,18 +63,58 @@ def compute_metrics(prediction, groundtruth):
     print('V measure score: {}'.format(v_score))
 
 
-def signal_handler(sig, frame):
-    if out:
-        out.release()
-    sys.exit(0)
-signal.signal(signal.SIGINT, signal_handler)
+def annotate_video(video_src: Video_Reader,
+                   frame_track_dict: dict,
+                   labels,
+                   video_out_path):
+
+    fourcc = cv2.VideoWriter_fourcc(*'XVID')
+    out = cv2.VideoWriter(video_out_path, fourcc, 25, (img_width, img_height))
+
+    video_src.reset()
+    bbx_idx = 0
+    tbar = tqdm.tqdm(range(num_frame))
+    for frame_idx in tbar:
+
+        ret, image = video_src.get_frame()
+        if not ret:
+            break
+
+        if frame_idx in frame_track_dict.keys():
+            bounding_boxes = frame_track_dict[frame_idx]
+
+            for bbx in bounding_boxes:
+                label = labels[bbx_idx]
+
+                annotation_str = ['Subject: {}'.format(label)]
+
+                draw_bounding_box_on_image_array(
+                    image,
+                    bbx[1],
+                    bbx[0],
+                    bbx[3],
+                    bbx[2],
+                    color=color[label],
+                    thickness=4,
+                    display_str_list=annotation_str,
+                    use_normalized_coordinates=False)
+
+                bbx_idx += 1
+
+        cv2.putText(image, "Frame {}".format(frame_idx), (10, 20),
+                    cv2.FONT_HERSHEY_TRIPLEX, 0.5, (0, 255, 0), 1, cv2.LINE_4)
+        out.write(image)
+    print('')
+
+    print('Saving video at ' + video_out_path)
+    out.release()
 
 
 def parse_arguments(argv):
     parser = argparse.ArgumentParser()
 
     parser.add_argument('--config', type=str,
-                        help='Path to the configuration file', default='config/evaluation.json')
+                        help='Path to the configuration file', default='config/video_description.json')
 
     return parser.parse_args(argv)
 
@@ -78,14 +122,6 @@ def parse_arguments(argv):
 if __name__ == '__main__':
 
     # ffmpeg - i bbtS01E01.mkv - vf scale = 1024:576 - r 25 - codec: a copy outputbbt1.mkv
-
-    annotation_path = '/export/livia/data/lemoineh/CVPR2013_PersonID_data/bbt_s01e01_facetracks.mat'
-    movie_path = '/export/livia/data/lemoineh/BBT/bbts01e01.mkv'
-    checkpoint_path = '/export/livia/data/lemoineh/torch_facetripletloss/models/BBTfinetune2/model_209.pth'
-    video_out_dir = '/export/livia/data/lemoineh/video/'
-    # checkpoint_path = '/export/livia/data/lemoineh/torch_facetripletloss/models/TripletLossPlots6/model_199.pth'
-
-    max_frame = 500
 
     args = parse_arguments(sys.argv[1:])
 
@@ -99,53 +135,89 @@ if __name__ == '__main__':
     device = torch.device("cuda:0" if use_cuda else "cpu")
 
     # Load model
-    print('Loading model from checkpoint {}'.format(checkpoint_path))
-    checkpoint = torch.load(checkpoint_path)
+    print('Loading model from checkpoint {}'.format(config.model.checkpoint_path))
+    checkpoint = torch.load(config.model.checkpoint_path)
     embedding_size = checkpoint['embedding_size']
 
     model = models.load_model(config.model.model_arch,
+                              device,
                               embedding_size=embedding_size)
     model.load_state_dict(checkpoint['model_state_dict'])
 
     # Create video source instance
-    print('Initializing video capture at {}'.format(movie_path))
-    video_src = Video_Reader(movie_path)
+    print('Initializing video capture at {}'.format(config.dataset.bbt.movie_path))
+    video_src = Video_Reader(config.dataset.bbt.movie_path)
 
-    if not os.path.exists(video_out_dir):
-        os.mkdir(video_out_dir)
+    if not os.path.exists(config.output.video_dir):
+        os.mkdir(config.output.video_dir)
 
     _, image = video_src.get_frame()
 
     img_height, img_width, img_channel = image.shape
 
-    fourcc = cv2.VideoWriter_fourcc(*'XVID')
-    filename = datetime.strftime(datetime.now(), '%Y%m%d-%H%M%S')
-    video_out_filepath = video_out_dir + filename + '.avi'
-    out = cv2.VideoWriter(video_out_filepath, fourcc, 25, (img_width, img_height))
-
-    print('Reading annotation at {}'.format(annotation_path))
-    Annotation_list = Read_Annotation(annotation_path, (img_width, img_height))
-
     # time metrics
     cycle_time = 1.0
-
 
     cropped_image_list = []
     track_dict = {}
     frame_dict = {}
-    bbx_list = []
-    num_frame = min(len(Annotation_list), max_frame)
+    num_frame = config.dataset.bbt.num_frame
 
-    num_gt_classes = 3
+    my_fastdt = FAST_DT(tracker_max_age=config.hyperparameters.tracker_max_age)
 
-    my_fastdt = FAST_DT("cpu")
+    print('Generate bounding boxes.')
 
+    # Generate bounding boxes for each frame of the movie
+    video_src.reset()
+    frame_idx = 0
+    tbar = tqdm.tqdm(range(num_frame))
+    for j in tbar:
+    # for j in range(num_frame):
+
+        # print('Frame {}'.format(frame_idx))
+        ret, image = video_src.get_frame()
+        if not ret:
+            break
+
+        bounding_boxes = my_fastdt.predict(image)
+
+        frame_track_list = []
+        for bbx in bounding_boxes:
+            # Add image index toactual track
+            track_id = bbx[4]
+            sample_data = np.concatenate((bbx[0:4], [frame_idx]))
+            if track_id not in track_dict.keys():
+                # Init Image Indexes list for the new track
+                track_dict[track_id] = [sample_data]
+            else:
+                track_dict[track_id].append(sample_data)
+
+        frame_idx += 1
+
+    print('{} tracklets.'.format(len(track_dict.keys())))
+
+    frame_track_dict = {}
+    track_dict_keys = list(track_dict.keys())
+    for track_id in track_dict_keys:
+        # Remove the last samples of each track as they are residual samples from the tracker
+        if len(track_dict[track_id]) < config.hyperparameters.tracker_max_age:
+            track_dict.pop(track_id)
+        else:
+            del track_dict[track_id][-config.hyperparameters.tracker_max_age]
+            # track_dict[track_id] = track_dict[track_id][0:config.hyperparameters.tracker_max_age]
+            # Distribute track samples into a frame list
+            for sample_data in track_dict[track_id]:
+                frame_idx = sample_data[4]
+                data = np.concatenate((sample_data[0:4], [track_id]))
+                if frame_idx not in frame_track_dict.keys():
+                    frame_track_dict[frame_idx] = [data]
+                else:
+                    frame_track_dict[frame_idx].append(data)
 
     print('Extracting face patches.')
 
     video_src.reset()
     frame_idx = 0
-    bbx_idx = 0
     tbar = tqdm.tqdm(range(num_frame))
     for j in tbar:
 
@@ -153,39 +225,24 @@ if __name__ == '__main__':
         if not ret:
             break
 
-        # start_time = time.time()
-        bounding_boxes = my_fastdt.predict(image)
-        # elapsed_time = time.time() - start_time
-        # print('total: {}'.format(elapsed_time))
+        if frame_idx in frame_track_dict.keys():
+            bounding_boxes = frame_track_dict[frame_idx]
 
-        bbx_list = []
-        for bbx in bounding_boxes:
+            for bbx in bounding_boxes:
 
-            cropped_image = image[bbx[1]: bbx[3], bbx[0]: bbx[2], :]
-            cropped_image = cv2.cvtColor(cropped_image, cv2.COLOR_BGR2RGB)
-            cropped_image = Image.fromarray(cropped_image)
-            cropped_image = utils.make_square(cropped_image)
-            cropped_image = F.resize(cropped_image, size=160, interpolation=1)
-            cropped_image_list.append(cropped_image)
+                cropped_image = image[bbx[1]: bbx[3], bbx[0]: bbx[2], :]
+                cropped_image = cv2.cvtColor(cropped_image, cv2.COLOR_BGR2RGB)
+                cropped_image = Image.fromarray(cropped_image)
+                cropped_image = utils.make_square(cropped_image)
+                cropped_image = F.resize(cropped_image, size=160, interpolation=1)
+                cropped_image_list.append(cropped_image)
 
-            # Add image index toactual track
-            if bbx[4] not in track_dict.keys():
-                # Init Image Indexes list for the new track
-                track_dict[bbx[4]] = [bbx_idx]
-            else:
-                track_dict[bbx[4]].append(bbx_idx)
-
-            bbx_list.append(bbx)
-            bbx_idx += 1
-
-        frame_dict[frame_idx] = bbx_list
         frame_idx += 1
     print('')
     print('{} tracks.'.format(len(list(track_dict.keys()))))
 
     # Data transform
     data_transform = transforms.Compose([
-        transforms.Resize((160, 160), interpolation=1),
         transforms.ToTensor()
     ])
 
@@ -203,75 +260,41 @@ if __name__ == '__main__':
                                          device)
 
     # Clustering
-    nb_cluster = num_gt_classes
-    my_clustering = clustering.hac_cluster(nb_cluster)
-
-    # Frame level clustering
-    print('Performing frame level clustering.')
-
-    pred_labels = my_clustering.cluster(features)
+    print('Performing clustering.')
+    pred_labels, nb_cluster = clustering.cluster_techniques(features,
+                                                            cluster_methods='kmeans')
     cluster_classes = np.unique(pred_labels)
+    print('{} clusters.'.format(nb_cluster))
 
-    # Track level clustering
-    print('Performing track level clustering.')
+    # # Frame level clustering
+    # print('Performing frame level clustering.')
+    #
+    # pred_labels = my_clustering.cluster(features)
+    # cluster_classes = np.unique(pred_labels)
+    #
+    # # Track level clustering
+    # print('Performing track level clustering.')
+    #
+    # mean_feature_tracklist = []
+    # for track_idx in track_dict.keys():
+    #     feature_track = features[track_dict[track_idx]]
+    #     mean_feature_tracklist.append(np.mean(feature_track, axis=0))
+    # mean_feature_tracklist = np.asarray(mean_feature_tracklist)
+    #
+    # pred_tracklabels = my_clustering.cluster(mean_feature_tracklist)
+    # cluster_classes = np.unique(pred_tracklabels)
+    #
+    # tsne_vis = TSNE_Visualizer()
+    # tsne_vis.train(mean_feature_tracklist)
+    # tsne_vis.plot(pred_tracklabels, env_name='BBT_vis', name='Emb_visPred')
 
-    mean_feature_tracklist = []
-    for track_idx in track_dict.keys():
-        feature_track = features[track_dict[track_idx]]
-        mean_feature_tracklist.append(np.mean(feature_track, axis=0))
-    mean_feature_tracklist = np.asarray(mean_feature_tracklist)
+    print('Describing movie.')
 
-    pred_tracklabels = my_clustering.cluster(mean_feature_tracklist)
-    cluster_classes = np.unique(pred_tracklabels)
-
-    tsne_vis = TSNE_Visualizer()
-    tsne_vis.train(mean_feature_tracklist)
-    tsne_vis.plot(pred_tracklabels, env_name='BBT_vis', name='Emb_visPred')
-
-    print('Describing video sequence.')
-
-    video_src.reset()
-    frame_idx = 0
-    bbx_idx = 0
-
-    tbar = tqdm.tqdm(range(num_frame))
-    for j in tbar:
-
-        ret, image = video_src.get_frame()
-        if not ret:
-            break
-
-        bounding_boxes_list = frame_dict[frame_idx]
-
-        for bbx in bounding_boxes_list:
-
-            frame_label = pred_labels[bbx_idx]
-            track_label = pred_tracklabels[bbx[4]]
-
-            annotation_str = ['Frame: {}'.format(frame_label),
-                              'Track: {}'.format(track_label)]
-
-            draw_bounding_box_on_image_array(
-                image,
-                bbx[1],
-                bbx[0],
-                bbx[3],
-                bbx[2],
-                color='#66ff66',
-                thickness=4,
-                display_str_list=annotation_str,
-                use_normalized_coordinates=False)
-
-            bbx_idx += 1
-
-        cv2.putText(image, "Frame {}".format(frame_idx), (10, 20),
-                    cv2.FONT_HERSHEY_TRIPLEX, 0.5, (0, 255, 0), 1, cv2.LINE_4)
-        out.write(image)
-
-        frame_idx += 1
-    print('')
-
-    print('Saving video at ' + video_out_filepath)
-    out.release()
+    filename = datetime.strftime(datetime.now(), '%Y%m%d-%H%M%S')
+    video_out_filepath = config.output.video_dir + filename + '.avi'
+    annotate_video(video_src,
+                   frame_track_dict,
+                   pred_labels,
+                   video_out_filepath)
 
     print('Process completed.')

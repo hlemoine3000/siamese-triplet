@@ -7,10 +7,10 @@ NUM_SECTOR = 9
 FLT_EPSILON = 1e-07
 
 
-@jit
+@jit(nopython=True)
 def func1(dx, dy, boundary_x, boundary_y, height, width, numChannels):
-    r = np.zeros((height, width), np.float32)
-    alfa = np.zeros((height, width, 2), np.int)
+    r = np.zeros((height, width), dtype=np.float32)
+    alfa = np.zeros((height, width, 2), dtype=np.intc)
 
     for j in range(1, height-1):
         for i in range(1, width-1):

@@ -8,6 +8,7 @@ from random import sample
 
 from dataset_utils import dataset
 
+
 class Random_BalancedBatchSampler(BatchSampler):
     r"""Samples elements sequentially, always in the same order.
 
@@ -15,7 +16,8 @@ class Random_BalancedBatchSampler(BatchSampler):
         data_source (Dataset): dataset to sample from
     """
 
-    def __init__(self, data_source: datasets.ImageFolder,
+    def __init__(self,
+                 data_source: datasets.DatasetFolder,
                  num_classes_per_batch: int,
                  samples_per_class: int,
                  max_batches: int=1000):
@@ -29,28 +31,82 @@ class Random_BalancedBatchSampler(BatchSampler):
             raise ValueError('Trying to sample {} classes in a dataset with {} classes.'.format(
                 self.num_classes_per_batch, len(self.data_source.classes)))
 
-        self.num_batches = len(self.data_source.samples) // (self.num_classes_per_batch * self.samples_per_class)
-
         self.sample_idxs = np.arange(len(self.data_source.samples))
         self.targets = np.array(self.data_source.targets)
         self.classes = np.array(list(self.data_source.class_to_idx.values()))
         self.class_samples = {i: self.sample_idxs[self.targets == i] for i in self.classes}
 
+        self.num_batches = min(len(self.classes) // self.num_classes_per_batch,
+                               self.max_batches)
+
     def __iter__(self):
         batches = []
-        for i in range(min(self.num_batches, self.max_batches)):
+        shuffled_classes = self.classes.copy()
+        np.random.shuffle(shuffled_classes)
+        classes_per_batch = []
+        for idx in range(0, len(self.classes) - self.num_classes_per_batch, self.num_classes_per_batch):
+            classes_per_batch.append(shuffled_classes[idx:idx+self.num_classes_per_batch])
+        for classes in classes_per_batch:
             batch = []
-            chosen_classes_idx = np.random.choice(self.classes, self.num_classes_per_batch, replace=False)
-            for i in chosen_classes_idx:
-                if len(self.class_samples[i]) < self.samples_per_class:
-                    raise Exception('Number of samples ({}) is not sufficient in class {}. Require {} samples.'.format(len(self.class_samples[i]), i, self.samples_per_class))
-                batch.append(np.random.choice(self.class_samples[i], self.samples_per_class, replace=False))
+            for sample_class in classes:
+                if len(self.class_samples[sample_class]) < self.samples_per_class:
+                    # raise Exception('Number of samples ({}) is not sufficient in class {}. Require {} samples.'.format(len(self.class_samples[i]), i, self.samples_per_class))
+                    batch.append(np.random.choice(self.class_samples[sample_class], self.samples_per_class, replace=True))
+                else:
+                    batch.append(np.random.choice(self.class_samples[sample_class], self.samples_per_class, replace=False))
             batches.append(np.concatenate(batch))
 
         return iter(batches)
 
     def __len__(self):
-        return min(self.num_batches, self.max_batches)
+        return self.num_batches
+
+
+# class Random_BalancedBatchSampler(BatchSampler):
+#     r"""Samples elements sequentially, always in the same order.
+#
+#     Arguments:
+#         data_source (Dataset): dataset to sample from
+#     """
+#
+#     def __init__(self, data_source: datasets.ImageFolder,
+#                  num_classes_per_batch: int,
+#                  samples_per_class: int,
+#                  max_batches: int=1000):
+#
+#         self.data_source = data_source
+#         self.num_classes_per_batch = num_classes_per_batch
+#         self.samples_per_class = samples_per_class
+#         self.max_batches = max_batches
+#
+#         if self.num_classes_per_batch > len(self.data_source.classes):
+#             raise ValueError('Trying to sample {} classes in a dataset with {} classes.'.format(
+#                 self.num_classes_per_batch, len(self.data_source.classes)))
+#
+#         self.num_batches = len(self.data_source.samples) // (self.num_classes_per_batch * self.samples_per_class)
+#
+#         self.sample_idxs = np.arange(len(self.data_source.samples))
+#         self.targets = np.array(self.data_source.targets)
+#         self.classes = np.array(list(self.data_source.class_to_idx.values()))
+#         self.class_samples = {i: self.sample_idxs[self.targets == i] for i in self.classes}
+#
+#     def __iter__(self):
+#         batches = []
+#         for i in range(min(self.num_batches, self.max_batches)):
+#             batch = []
+#             chosen_classes_idx = np.random.choice(self.classes, self.num_classes_per_batch, replace=False)
+#             for i in chosen_classes_idx:
+#                 if len(self.class_samples[i]) < self.samples_per_class:
+#                     # raise Exception('Number of samples ({}) is not sufficient in class {}. Require {} samples.'.format(len(self.class_samples[i]), i, self.samples_per_class))
+#                     batch.append(np.random.choice(self.class_samples[i], self.samples_per_class, replace=True))
+#                 else:
+#                     batch.append(np.random.choice(self.class_samples[i], self.samples_per_class, replace=False))
+#             batches.append(np.concatenate(batch))
+#
+#         return iter(batches)
+#
+#     def __len__(self):
+#         return min(self.num_batches, self.max_batches)
 
 class Random_S2VBalancedBatchSampler(BatchSampler):
     r"""Samples elements sequentially, always in the same order.

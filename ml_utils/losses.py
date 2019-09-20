@@ -3,6 +3,8 @@ import torch.nn as nn
 import torch.nn.functional as F
 import numpy as np
 
+from utils import utils
+
 
 class ContrastiveLoss(nn.Module):
     """
@@ -45,16 +47,14 @@ class DualtripletLoss(nn.Module):
     Takes embeddings of an anchor sample, a positive sample,  a negative sample and two random target samples
     """
 
-    def __init__(self, margin, lamda):
+    def __init__(self, margin, lamda, plotter):
         super(DualtripletLoss, self).__init__()
         self.margin = margin
         self.lamda = lamda
-        self.loss_keys = ['L1', 'L2']
-        self.lamda = lamda
+        self.plotter = plotter
+        self.data_dict = utils.AverageData_Dict()
 
     def forward(self, sa, sp, sn, ta, tp, tn):
-
-        losses_dict = {}
 
         src_distance_positive = (sa - sp).pow(2).sum(1)  # .pow(.5)
         src_distance_negative = (sa - sn).pow(2).sum(1)  # .pow(.5)
@@ -66,32 +66,18 @@ class DualtripletLoss(nn.Module):
 
         quadruplet_loss = loss1 + loss2
 
-        losses_dict['L1'] = loss1
-        losses_dict['L2'] = loss2
+        self.data_dict['L1'].append(loss1.item())
+        self.data_dict['L2'].append(loss2.item())
+        self.data_dict['L12'].append(quadruplet_loss.item())
 
-        return quadruplet_loss, losses_dict
+        return quadruplet_loss
+
+    def plot(self, epoch):
+        self.plotter.plot('loss', 'epoch', 'L12', 'Losses', epoch, self.data_dict['L12'].last_avg())
+        self.plotter.plot('loss', 'epoch', 'L1', 'Losses', epoch, self.data_dict['L1'].last_avg())
+        self.plotter.plot('loss', 'epoch', 'L2', 'Losses', epoch, self.data_dict['L2'].last_avg())
 
 
-# class QuadrupletLoss_bad(nn.Module):
-#     """
-#     Triplet loss
-#     Takes embeddings of an anchor sample, a positive sample and a negative sample
-#     """
-#
-#     def __init__(self, margin1, margin2, lamda=0.1):
-#         super(QuadrupletLoss_bad, self).__init__()
-#         self.margin1 = margin1
-#         self.margin2 = margin2
-#         self.lamda = lamda
-#
-#     def forward(self, anchor, positive, negative, target, size_average=True):
-#         distance_positive = (anchor - positive).pow(2).sum(1)  # .pow(.5)
-#         distance_negative = (anchor - negative).pow(2).sum(1)  # .pow(.5)
-#         distance_target = (anchor - target).pow(2).sum(1)  # .pow(.5)
-#         losses = F.relu(distance_positive - distance_negative - self.lamda * distance_target + self.margin1)
-#         return losses.mean() if size_average else losses.sum()
-#
-#
 # class QuadrupletLoss(nn.Module):
 #     """
 #     Triplet loss

@@ -14,6 +14,7 @@ from torchvision import transforms
 
 from experiments import tripletloss_exp
 from ml_utils import trainer, losses, miners
+import evaluation
 import models
 import utils
 
@@ -64,9 +65,9 @@ def main(args):
     # scheduler = lr_scheduler.StepLR(optimizer, 5, gamma=0.1)
     scheduler = lr_scheduler.ExponentialLR(optimizer, config.hyperparameters.learning_rate_decay_factor)
 
-    plotter = utils.VisdomLinePlotter(env_name=config.visdom.environment_name, port=config.visdom.port)
+    plotter = utils.VisdomPlotter(env_name=config.visdom.environment_name, port=config.visdom.port)
 
-    miner = miners.SemihardNegativeTripletSelector(config.hyperparameters.margin)
+    miner = miners.FunctionSemihardTripletSelector(config.hyperparameters.margin, plotter)
 
     loss = nn.TripletMarginLoss(config.hyperparameters.margin, swap=config.hyperparameters.triplet_swap)
 
@@ -79,7 +80,8 @@ def main(args):
                                          plotter,
                                          config.hyperparameters.margin,
                                          config.model.embedding_size,
-                                         config.visdom.log_interval)
+                                         evaluation.pair_evaluate,
+                                         batch_size=config.hyperparameters.batch_size)
 
     # Set up output directory
     # subdir = datetime.strftime(datetime.now(), '%Y%m%d-%H%M%S')
@@ -87,8 +89,8 @@ def main(args):
     model_dir = os.path.join(os.path.expanduser(config.output.output_dir), subdir)
     if not os.path.isdir(model_dir):  # Create the model directory if it doesn't exist
         os.makedirs(model_dir)
-    else:
-        raise Exception('Environment name {} already taken.'.format(subdir))
+    # else:
+    #     raise Exception('Environment name {} already taken.'.format(subdir))
     config_filename = path_leaf(args.config)
     copyfile(args.config, os.path.join(model_dir, config_filename))
 
@@ -98,33 +100,20 @@ def main(args):
     while epoch < config.hyperparameters.n_epochs:
 
         # Validation
-        for test_name, test_loader in test_container:
+        for test_name, test_loader, eval_function in test_container:
             print('\nEvaluation on {}'.format(test_name))
-            eval_data = my_trainer.Evaluate(test_loader,
-                                            name=test_name,
-                                            nrof_folds=config.dataset.cross_validation.num_fold,
-                                            val_far=1e-2)
-
-            plotter.plot('accuracy', 'epoch', test_name, 'Accuracy', epoch, eval_data['accuracy'])
-            plotter.plot('auc', 'epoch', test_name, 'AUC', epoch, eval_data['auc'])
+            eval_function(test_loader,
+                          model,
+                          device,
+                          test_name,
+                          plotter=plotter,
+                          epoch=epoch,
+                          distance_metric=0,
+                          val_far=config.hyperparameters.val_far)
 
         # Training
         print('\nTrain Epoch {}'.format(epoch))
-        train_data = my_trainer.Train_Epoch(online_train_loader)
-
-        if train_data is None:
-            # Take last training results
-            train_data = last_train_data
-        else:
-            last_train_data = train_data
-
-
-        plotter.plot('loss', 'epoch', 'train', 'Triplet Loss',
-                     epoch, train_data['loss'])
-        plotter.plot('triplet number', 'epoch', 'train', 'Triplet Mining',
-                     epoch, train_data['num_triplets'])
-        plotter.plot('learning rate', 'epoch', 'train', 'Learning Rate',
-                     epoch, train_data['lr'])
+        my_trainer.Train_Epoch(online_train_loader, epoch)
 
         # Save model
         if not (epoch + 1) % config.output.save_interval:

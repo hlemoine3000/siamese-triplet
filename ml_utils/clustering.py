@@ -1,37 +1,89 @@
 
-from sklearn.cluster import DBSCAN
-from sklearn.cluster import AgglomerativeClustering
-from sklearn.cluster import KMeans
-from sklearn.metrics import silhouette_samples, silhouette_score
+from sklearn.cluster import DBSCAN, AgglomerativeClustering, KMeans, SpectralClustering
+from sklearn import metrics
+from sklearn.manifold import TSNE
 from sklearn.decomposition import PCA
 import tqdm
 # import dlib
 import numpy as np
+from scipy.sparse import csgraph
+from scipy.spatial.distance import pdist, squareform
 
-class Clustering():
+from utils import plotter
 
-    def __init__(self, config):
 
-        self.cluster_technic = None
+def purity_score(y_true, y_pred):
+    # compute contingency matrix (also called confusion matrix)
+    contingency_matrix = metrics.cluster.contingency_matrix(y_true, y_pred)
+    # return purity
+    return np.sum(np.amax(contingency_matrix, axis=0)) / np.sum(contingency_matrix)
 
-        if config['Usage']['clustering_technic'] == 'dbscan':
-            eps = config.getfloat('dbscan', 'eps')
-            min_samples = config.getint('dbscan', 'min_samples')
-            metric = config.get('dbscan', 'metric')
-            self.cluster_technic = dbscan_cluster(eps,
-                                                  min_samples,
-                                                  metric)
-        # elif config['Usage']['clustering_technic'] == 'chinese_whispers':
-        #     threshold = config.getfloat('chinese_whispers', 'threshold')
-        #     self.cluster_technic = chinese_whispers_cluster(threshold)
-        else:
-            raise ValueError('Clustering technique {} not supported. Check the configuration file.'.format(config['Usage']['clustering_technic']))
 
-    def cluster(self, feature_array):
-        # I have not define a standard output prediction yet
-        # (dets_boxes, dets_scores, dets_classes, elapsed_time)
-        # dets_boxes == [xmin, ymin, xmax, ymax]
-        return self.cluster_technic.cluster(feature_array)
+def evaluate_clustering(features: np.array,
+                        ground_truth: np.array,
+                        cluster_techniques_list: list,
+                        plotter: plotter.VisdomPlotter= None,
+                        epoch:int=0,
+                        max_clusters: int=10):
+
+    if plotter:
+        # Embeddings visualisation
+        tsne_features = TSNE(n_components=2,
+                             perplexity=30.0,
+                             early_exaggeration=12.0, learning_rate=200.0, n_iter=20000,
+                             n_iter_without_progress=1000, min_grad_norm=1e-7,
+                             metric="euclidean", init="random", verbose=1,
+                             random_state=None, method='exact', angle=0.2).fit_transform(features)
+        plotter.scatter_plot('Embeddings Ground Truth',
+                             tsne_features,
+                             ground_truth)
+
+    data_dict = {}
+    for cluster_method in cluster_techniques_list:
+        predictions, method_datadict = cluster_techniques(features,
+                                                     cluster_method,
+                                                     max_clusters=max_clusters)
+
+        purity = purity_score(ground_truth, predictions)
+        v_score = metrics.v_measure_score(ground_truth, predictions)
+
+        print('Clustering {}'.format(cluster_method))
+        print('Purity: {}'.format(purity))
+        print('V measure score: {}'.format(v_score))
+
+        if plotter:
+            plotter.plot('metrics value', 'epoch', '{}_purity'.format(cluster_method), 'Clustering Performance', epoch,
+                         np.mean(purity))
+            plotter.plot('metrics value', 'epoch', '{}_v_score'.format(cluster_method), 'Clustering Performance', epoch,
+                         np.mean(v_score))
+            plotter.scatter_plot('{} Predictions'.format(cluster_method),
+                                 tsne_features,
+                                 predictions)
+
+def cluster_techniques(features,
+                       cluster_methods: str,
+                       max_clusters: int = 10):
+
+    if cluster_methods == 'kmeans':
+        labels, data_dict = kmeans_silhouetteanalysis(features,
+                                                      10,
+                                                      verbose=False)
+    elif cluster_methods == 'hac':
+        labels, data_dict = hac_silhouetteanalysis(features,
+                                                      10,
+                                                      verbose=False)
+    elif cluster_methods == 'dbscan':
+        labels, data_dict = dbscan_silhouetteanalysis(features,
+                                                      verbose=False)
+    elif cluster_methods == 'spectral':
+        labels, data_dict = spectral_analysis(features,
+                                              10,
+                                              verbose=False)
+    else:
+        raise ValueError('Clustering technique {} not supported.'.format(
+            cluster_methods))
+
+    return labels, data_dict
 
 
 def dbscan_silhouetteanalysis(X, metric='euclidean', min_samples=1, verbose=False):
@@ -67,7 +119,7 @@ def dbscan_silhouetteanalysis(X, metric='euclidean', min_samples=1, verbose=Fals
         # The silhouette_score gives the average value for all the samples.
         # This gives a perspective into the density and separation of the formed
         # clusters
-        silhouette_avg = silhouette_score(features, cluster_labels)
+        silhouette_avg = metrics.silhouette_score(features, cluster_labels)
         silhouette_scores.append(silhouette_avg)
         labels.append(cluster_labels)
         n_clusters.append(n_clusters_)
@@ -82,7 +134,7 @@ def dbscan_silhouetteanalysis(X, metric='euclidean', min_samples=1, verbose=Fals
     return labels[best_n_clusters_idx], data_dict
 
 
-def kmeans_silhouetteanalysis(X, max_clusters, return_all=False, verbose=False):
+def kmeans_silhouetteanalysis(X, max_clusters, verbose=False):
 
     range_n_clusters = range(2, max_clusters + 1)
     silhouette_scores = []
@@ -103,14 +155,14 @@ def kmeans_silhouetteanalysis(X, max_clusters, return_all=False, verbose=False):
         # The silhouette_score gives the average value for all the samples.
         # This gives a perspective into the density and separation of the formed
         # clusters
-        silhouette_avg = silhouette_score(X, cluster_labels)
+        silhouette_avg = metrics.silhouette_score(X, cluster_labels)
         silhouette_scores.append(silhouette_avg)
 
-    if return_all:
-        return labels, silhouette_scores, range_n_clusters
-    else:
-        best_n_clusters_idx = silhouette_scores.index(max(silhouette_scores))
-        return labels[best_n_clusters_idx], silhouette_scores[best_n_clusters_idx], range_n_clusters[best_n_clusters_idx]
+    best_n_clusters_idx = silhouette_scores.index(max(silhouette_scores))
+    data_dict = {'silhouette_score': silhouette_scores[best_n_clusters_idx],
+                 'n_cluster': range_n_clusters[best_n_clusters_idx]}
+
+    return labels[best_n_clusters_idx], data_dict
 
 
 def hac_silhouetteanalysis(X,
@@ -137,73 +189,108 @@ def hac_silhouetteanalysis(X,
         # The silhouette_score gives the average value for all the samples.
         # This gives a perspective into the density and separation of the formed
         # clusters
-        silhouette_avg = silhouette_score(X, cluster_labels)
+        silhouette_avg = metrics.silhouette_score(X, cluster_labels)
         silhouette_scores.append(silhouette_avg)
 
-    # best_n_clusters_idx = silhouette_scores.index(max(silhouette_scores))
+    best_n_clusters_idx = silhouette_scores.index(max(silhouette_scores))
+    data_dict = {'silhouette_score': silhouette_scores[best_n_clusters_idx],
+                 'n_cluster': range_n_clusters[best_n_clusters_idx]}
 
-    return labels, silhouette_scores, range_n_clusters
-
-
-class kmeans_cluster():
-    def __init__(self,
-                 n_clusters=2,
-                 random_state=0):
-
-        self.n_clusters = n_clusters
-        self.random_state = random_state
-        self.cluster_technic = KMeans(n_clusters=n_clusters, random_state=random_state)
-
-    def cluster(self, feature_array):
-
-        kmeans = self.cluster_technic.fit(feature_array)
-        return kmeans.labels_
+    return labels[best_n_clusters_idx], data_dict
 
 
-class dbscan_cluster():
-    def __init__(self,
-                 eps,
-                 min_samples,
-                 metric):
+def spectral_analysis(X,
+                      max_clusters,
+                      verbose=False,
+                      plotter: plotter.VisdomPlotter= None):
 
-        self.eps = eps
-        self.min_samples = min_samples
-        self.metric = metric
-        self.cluster_technic = DBSCAN(eps=self.eps, min_samples=self.min_samples, metric=self.metric)
+    affinity_matrix = getAffinityMatrix(X, k=7)
+    nb_clusters, eigenvalues, eigenvectors = eigenDecomposition(affinity_matrix)
 
-    def cluster(self, feature_array):
+    clustering_thecnique = SpectralClustering(n_clusters=nb_clusters[0],
+                                              assign_labels="discretize",
+                                              random_state=0).fit(X)
 
-        # Compute DBSCAN
-        db = self.cluster_technic.fit(feature_array)
-        core_samples_mask = np.zeros_like(db.labels_, dtype=bool)
-        core_samples_mask[db.core_sample_indices_] = True
-        labels = db.labels_
+    data_dict = {'eigendecomposition': nb_clusters,
+                 'n_cluster': nb_clusters[0]}
 
-        n_clusters_ = len(set(labels)) - (1 if -1 in labels else 0)
-        n_noise_ = list(labels).count(-1)
-        print('')
-        print('Estimated number of clusters: {}'.format(n_clusters_))
-        print('Estimated number of noise points: {}'.format(n_noise_))
+    return clustering_thecnique.labels_, data_dict
 
-        return labels
+def eigenDecomposition(A, plot=False, topK=5):
+    """
+    :param A: Affinity matrix
+    :param plot: plots the sorted eigen values for visual inspection
+    :return A tuple containing:
+    - the optimal number of clusters by eigengap heuristic
+    - all eigen values
+    - all eigen vectors
 
-class hac_cluster():
+    This method performs the eigen decomposition on a given affinity matrix,
+    following the steps recommended in the paper:
+    1. Construct the normalized affinity matrix: L = D−1/2ADˆ −1/2.
+    2. Find the eigenvalues and their associated eigen vectors
+    3. Identify the maximum gap which corresponds to the number of clusters
+    by eigengap heuristic
 
-    def __init__(self,
-                 n_clusters,
-                 affinity='euclidean',
-                 linkage='ward'):
+    References:
+    https://papers.nips.cc/paper/2619-self-tuning-spectral-clustering.pdf
+    http://www.kyb.mpg.de/fileadmin/user_upload/files/publications/attachments/Luxburg07_tutorial_4488%5b0%5d.pdf
+    """
+    L = csgraph.laplacian(A, normed=True)
+    n_components = A.shape[0]
 
-        self.n_clusters = n_clusters
-        self.affinity = affinity
-        self.linkage = linkage
+    # LM parameter : Eigenvalues with largest magnitude (eigs, eigsh), that is, largest eigenvalues in
+    # the euclidean norm of complex numbers.
+    #     eigenvalues, eigenvectors = eigsh(L, k=n_components, which="LM", sigma=1.0, maxiter=5000)
+    eigenvalues, eigenvectors = np.linalg.eig(L)
 
-        self.cluster_technic = AgglomerativeClustering(n_clusters=n_clusters, affinity=affinity, linkage=linkage)
+    # if plot:
+    #     plt.title('Largest eigen values of input matrix')
+    #     plt.scatter(np.arange(len(eigenvalues)), eigenvalues)
+    #     plt.grid()
 
-    def cluster(self, feature_array):
+    # Identify the optimal number of clusters as the index corresponding
+    # to the larger gap between eigen values
+    index_largest_gap = np.argsort(np.diff(eigenvalues))[::-1][:topK]
+    nb_clusters = index_largest_gap + 1
 
-        self.cluster_technic.fit_predict(feature_array)
-        return self.cluster_technic.labels_
+    return nb_clusters, eigenvalues, eigenvectors
+
+
+def getAffinityMatrix(coordinates, k=7):
+    """
+    Calculate affinity matrix based on input coordinates matrix and the numeber
+    of nearest neighbours.
+
+    Apply local scaling based on the k nearest neighbour
+        References:
+    https://papers.nips.cc/paper/2619-self-tuning-spectral-clustering.pdf
+    """
+    # calculate euclidian distance matrix
+    dists = squareform(pdist(coordinates))
+
+    # for each row, sort the distances ascendingly and take the index of the
+    # k-th position (nearest neighbour)
+    knn_distances = np.sort(dists, axis=0)[k]
+    knn_distances = knn_distances[np.newaxis].T
+
+    # calculate sigma_i * sigma_j
+    local_scale = knn_distances.dot(knn_distances.T)
+
+    affinity_matrix = dists * dists
+    affinity_matrix = -affinity_matrix / local_scale
+    # divide square distance matrix by local scale
+    affinity_matrix[np.where(np.isnan(affinity_matrix))] = 0.0
+    # apply exponential
+    affinity_matrix = np.exp(affinity_matrix)
+    np.fill_diagonal(affinity_matrix, 0)
+    return affinity_matrix
+
+def spectral_clustering(X, max_clusters, verbose=False):
+
+    affinity_matrix = getAffinityMatrix(X, k=7)
+    nb_clusters, eigenvalues, eigenvectors = eigenDecomposition(affinity_matrix)
+    nb_clusters = min(nb_clusters[0], max_clusters)
 
 # class chinese_whispers_cluster():
 #     def __init__(self,

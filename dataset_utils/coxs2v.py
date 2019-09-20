@@ -16,6 +16,7 @@ def get_coxs2v_trainset(still_dir,
                         data_transform,
                         people_per_batch,
                         images_per_person,
+                        num_workers=4,
                         balanced=True,
                         video_only=False,
                         samples_division_list=None,  # [0.6, 0.4]
@@ -41,14 +42,14 @@ def get_coxs2v_trainset(still_dir,
                                                        max_batches=1000)
 
         return torch.utils.data.DataLoader(train_set,
-                                           num_workers=8,
+                                           num_workers=num_workers,
                                            batch_sampler=batch_sampler,
                                            pin_memory=True)
     else:
         return torch.utils.data.DataLoader(train_set,
                                            batch_size=people_per_batch*images_per_person,
                                            shuffle=True,
-                                           num_workers=8,
+                                           num_workers=num_workers,
                                            pin_memory=True)
 
 
@@ -59,9 +60,8 @@ def get_coxs2v_testset(still_dir,
                        nrof_folds,
                        data_transform,
                        batch_size,
+                       num_workers=4,
                        preload=False):
-
-    num_workers = 2 if preload else 4
 
 
     print('TEST SET COXS2V:\t{}'.format(video_dir))

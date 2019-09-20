@@ -31,7 +31,8 @@ import argparse
 import configparser
 import cv2
 
-from sklearn.utils.linear_assignment_ import linear_assignment
+# from sklearn.utils.linear_assignment_ import linear_assignment
+from scipy.optimize import linear_sum_assignment
 from utils.metrics import iou
 
 from align.detector import Face_Detector
@@ -49,7 +50,10 @@ def associate_detections_to_trackers(detections, trackers, iou_threshold=0.3):
     for d, det in enumerate(detections):
         for t, trk in enumerate(trackers):
             iou_matrix[d, t] = iou(det, trk)
-    matched_indices = linear_assignment(-iou_matrix)
+    # matched_indices = linear_assignment(-iou_matrix)
+    row_ind, col_ind = linear_sum_assignment(-iou_matrix)
+    matched_indices = np.concatenate((np.expand_dims(row_ind, axis=1), np.expand_dims(col_ind, axis=1)), axis=1)
+    # matched_indices = linear_sum_assignment(-iou_matrix)
 
     unmatched_detections = []
     for d, det in enumerate(detections):
@@ -100,18 +104,21 @@ class Sort(object):
         NOTE: The number of objects returned may differ from the number of detections provided.
         """
 
-        trks = np.zeros((len(self.trackers), 5))
+        # trks = np.zeros((len(self.trackers), 5))
+        trks = []
         to_del = []
 
         self.frame_count += 1
 
         # get predicted locations from existing trackers.
-        for t, trk in enumerate(trks):
-            pos = self.trackers[t].get_state(frame)
-            trk[:] = [pos[0], pos[1], pos[2], pos[3], 0]
-            if (np.any(np.isnan(pos))):
-                to_del.append(t)
-        trks = np.ma.compress_rows(np.ma.masked_invalid(trks))
+        if len(self.trackers) > 0:
+            for t in range(len(self.trackers)):
+                pos = self.trackers[t].get_state(frame)
+                trks.append([pos[0], pos[1], pos[2], pos[3], 0])
+                if (np.any(np.isnan(pos))):
+                    # print('tracker deleted1')
+                    to_del.append(t)
+            trks = np.ma.compress_rows(np.ma.masked_invalid(trks))
         for t in reversed(to_del):
             self.trackers.pop(t)
         matched, unmatched_dets, unmatched_trks = associate_detections_to_trackers(dets, trks)
@@ -119,19 +126,20 @@ class Sort(object):
         # update matched trackers with assigned detections
         for t, trk in enumerate(self.trackers):
             if (t not in unmatched_trks):
-                #print('matched detection')
+                # print('matched detection')
                 d = matched[np.where(matched[:, 1] == t)[0], 0]
                 trk.update(dets[d[0]], frame)
         # create and initialise new trackers for unmatched detections
         for i in unmatched_dets:
-            #print('unmatched detection')
+            # print('unmatched detection')
             trk = Tracker()
             trk.update(dets[i], frame)
             self.trackers.append(trk)
 
         # delete lost trackers
         for t, trk in reversed(list(enumerate(self.trackers))):
-            if (t in unmatched_trks) and (self.trackers[t].time_since_update < self.max_age):
+            if (t in unmatched_trks) and (self.trackers[t].time_since_update > self.max_age):
+                # print('tracker deleted2')
                 self.trackers.pop(t)
 
     def track(self, frame):
@@ -146,6 +154,7 @@ class Sort(object):
             ret.append(np.concatenate((d, [trk.id])))
             # remove dead track
             if (trk.time_since_update > self.max_age):
+                # print('tracker deleted3')
                 self.trackers.pop(i)
 
         if (len(ret) > 0):
@@ -153,11 +162,13 @@ class Sort(object):
         return np.empty((0, 5))
 
 
+
+
 class FAST_DT():
 
     def __init__(self,
-                 device,
-                 tracker_max_age=10000,
+                 device='cpu',
+                 tracker_max_age=10,
                  detection_per_frame=1):
 
         # create instance of the detector
@@ -181,8 +192,8 @@ class FAST_DT():
             # Get detections bbx
             dets, landmarks = self.detector.detect_faces(frame)
 
-            # Update the tracker with the new detections
-            self.tracker.update_detection(frame, dets)
+            if len(dets) > 0:
+                self.tracker.update_detection(frame, dets)
 
             # Reset the frame counter
             self.frame_count = 0
@@ -193,73 +204,3 @@ class FAST_DT():
         self.frame_count += 1
 
         return bbx
-
-
-# def parse_args():
-#     """Parse input arguments."""
-#     parser = argparse.ArgumentParser(description='Fast-DT')
-#     parser.add_argument('--display', dest='display', help='Display online tracker output (slow) [False]',
-#                         action='store_true')
-#     parser.add_argument('--config', metavar='PATH',
-#                         help='path to fast_dt.config', default='./fast_dt.config')
-#     args = parser.parse_args()
-#     return args
-
-
-# if __name__ == '__main__':
-#
-#     args = parse_args()
-#     display = args.display
-#
-#     config = configparser.ConfigParser()
-#     config.read(args.config)
-#
-#     # Create video source instance
-#     video_src = Video_Provider(config)
-#     # Crate the Fast DT Instance
-#     my_fastdt = FAST_DT(config)
-#
-#     bbx = None
-#
-#     # time metrics
-#     cycle_time = 1.0
-#
-#     while True:
-#
-#         start_time = time.time()
-#
-#         # Fetch a frame
-#         ret, image = video_src.get_frame()
-#         if not ret:
-#             print('Video terminated.')
-#             break
-#
-#         # Get prediction from the Fast DT
-#         (bbx, time_metrics) = my_fastdt.predict(image)
-#
-#         # Visualization of the results of the predictions.
-#         for d in bbx:
-#             draw_bounding_box_on_image_array(
-#                 image,
-#                 d[1],
-#                 d[0],
-#                 d[3],
-#                 d[2],
-#                 color='Pink', # This is not pink !?!? You lying to me?!
-#                 thickness=4,
-#                 display_str_list=['Subject {}'.format(int(d[4]))],
-#                 use_normalized_coordinates=False)
-#
-#         cv2.putText(image, "Total cycle: {:.2f} ms / {} FPS".format(cycle_time * 1000, int(1 / cycle_time)), (10, 40),
-#                     cv2.FONT_HERSHEY_TRIPLEX, 0.5, (0, 255, 0), 1, cv2.LINE_4)
-#
-#         cv2.putText(image, "Detection: %.2f ms" % (time_metrics[0] * 1000), (10, 60),
-#                     cv2.FONT_HERSHEY_TRIPLEX, 0.5, (0, 255, 0), 1, cv2.LINE_4)
-#
-#         cv2.putText(image, "Track: %.2f ms" % (time_metrics[1] * 1000), (10, 80),
-#                     cv2.FONT_HERSHEY_TRIPLEX, 0.5, (0, 255, 0), 1, cv2.LINE_4)
-#
-#         cv2.imshow('cam', image)
-#         cv2.waitKey(1)
-#
-#         cycle_time = time.time() - start_time

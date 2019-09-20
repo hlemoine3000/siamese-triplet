@@ -20,3 +20,8 @@ def extract_features(dataloader: DataLoader,
             embeddings.append(model.forward(source_batch))
 
     return torch.cat(embeddings, 0).cpu().numpy()
+
+
+def get_lr(optimizer):
+    for param_group in optimizer.param_groups:
+        return param_group['lr']

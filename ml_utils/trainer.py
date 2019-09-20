@@ -6,49 +6,10 @@ from torch.nn.modules.loss import _Loss
 from torch.optim import Optimizer
 from torch.optim.lr_scheduler import _LRScheduler
 from torch.utils.data import DataLoader
+
 import utils
-from evaluation import Evaluate
+from ml_utils import ml_utils
 
-
-def get_trainer(mode,
-                model: nn.Module,
-                miner,
-                loss: _Loss,
-                optimizer: Optimizer,
-                scheduler: _LRScheduler,
-                device,
-                plotter: utils.VisdomLinePlotter,
-                margin: int,
-                embedding_size: int,
-                log_interval: int=1):
-
-    if mode == 'dualtriplet':
-        return Dualtriplet_Trainer(model,
-                                   miner,
-                                   loss,
-                                   optimizer,
-                                   scheduler,
-                                   device,
-                                   plotter,
-                                   margin,
-                                   embedding_size,
-                                   log_interval)
-
-    elif mode == 'supervised_dualtriplet':
-        return Supervised_Dualtriplet_Trainer(model,
-                                              miner,
-                                              loss,
-                                              optimizer,
-                                              scheduler,
-                                              device,
-                                              margin)
-
-    else:
-        raise Exception('Trainer type {} does not exist.'.format(mode))
-
-def get_lr(optimizer):
-    for param_group in optimizer.param_groups:
-        return param_group['lr']
 
 class Triplet_Trainer(object):
     def __init__(self,
@@ -58,10 +19,11 @@ class Triplet_Trainer(object):
                  optimizer: Optimizer,
                  scheduler: _LRScheduler,
                  device,
-                 plotter: utils.VisdomLinePlotter,
+                 plotter: utils.VisdomPlotter,
                  margin: int,
                  embedding_size: int,
-                 log_interval: int=1):
+                 eval_function,
+                 batch_size: int = 32):
 
         self.model = model
         self.miner = miner
@@ -70,91 +32,170 @@ class Triplet_Trainer(object):
         self.plotter = plotter
         self.margin = margin
         self.embedding_size = embedding_size
+        self.batch_size = batch_size
 
+        self.eval_function = eval_function
         self.device = device
-        self.log_interval = log_interval
 
         self.step = 0
         self.loss = loss
 
     def Train_Epoch(self,
-                    train_loader: DataLoader):
+                    train_loader: DataLoader,
+                    epoch: int):
 
         self.model.train()
-        train_losses = utils.AverageMeter()
-        # train_ap_distances = utils.AverageMeter()
-        # train_an_distances = utils.AverageMeter()
-        train_triplets = utils.AverageMeter()
+        data_dict = utils.AverageData_Dict()
+        num_triplets = 0
 
         # Training
-        self.scheduler.step()
-        lr = get_lr(self.optimizer)
-        # self.plotter.plot('learning rate', 'step', 'train', 'Learning Rate',
-        #                   self.step, lr)
+        source_anchor_images = []
+        source_positive_images = []
+        source_negatives_images = []
 
-        triplets_list = []
-        loader_length = len(train_loader)
+        training_step = 0
         tbar = tqdm.tqdm(train_loader)
-        step = 0
-        for i, (local_batch, local_labels) in enumerate(tbar):
-            # Transfer to GPU
-            local_batch = local_batch.to(self.device)
-            embeddings = self.model.forward(local_batch)
+        for i, (batch, labels) in enumerate(tbar):
+            batch = batch.to(self.device)
 
-            triplets = self.miner.get_triplets(embeddings.cpu(), local_labels)
-            triplets_list.append(triplets)
-            triplets_train = torch.cat(triplets_list)
+            self.model.eval()
+            with torch.no_grad():
+                embeddings = self.model(batch)
 
-            if len(triplets_train) > 200:
+            triplets_indexes = self.miner.get_triplets(embeddings, labels)
+            num_triplets += len(triplets_indexes)
+            data_dict['triplets_per_step'].append(len(triplets_indexes))
 
-                a = embeddings[triplets_train[:, 0]]
-                p = embeddings[triplets_train[:, 1]]
-                n = embeddings[triplets_train[:, 2]]
+            source_anchor_images.append(batch[triplets_indexes[:, 0]])
+            source_positive_images.append(batch[triplets_indexes[:, 1]])
+            source_negatives_images.append(batch[triplets_indexes[:, 2]])
 
-                loss = self.loss(a, p, n)
+            if num_triplets >= self.batch_size:
+                source_anchor_images = torch.cat(source_anchor_images, 0)[:self.batch_size]
+                source_positive_images = torch.cat(source_positive_images, 0)[:self.batch_size]
+                source_negatives_images = torch.cat(source_negatives_images, 0)[:self.batch_size]
+
+                self.model.train()
+                image_tensor = torch.cat([source_anchor_images, source_positive_images, source_negatives_images], 0)
+                embeddings = self.model(image_tensor)
+                embeddings_list = torch.chunk(embeddings, 3, 0)
+
+                loss = self.loss(*embeddings_list)
                 self.optimizer.zero_grad()
                 loss.backward()
                 self.optimizer.step()
 
-                # tbar.set_description('Step {} - Loss: {:.4f}'.format(self.step, loss.item()))
+                ap_distances = torch.norm(embeddings_list[0] - embeddings_list[1], p=2, dim=1)
+                an_distances = torch.norm(embeddings_list[0] - embeddings_list[2], p=2, dim=1)
 
-                # ap_distances = torch.norm(a - p, p=2, dim=1)
-                # an_distances = torch.norm(a - n, p=2, dim=1)
+                data_dict['loss'].append(loss.item())
+                data_dict['dap'].append(ap_distances.mean().item())
+                data_dict['dan'].append(an_distances.mean().item())
 
-                train_losses.append(loss.item())
-                # train_ap_distances.append(ap_distances.mean().item())
-                # train_an_distances.append(an_distances.mean().item())
-                train_triplets.append(triplets_train.size(0))
+                num_triplets = 0
+                source_anchor_images = []
+                source_positive_images = []
+                source_negatives_images = []
 
-                step += 1
-                triplets_list = []
+                training_step += 1
+                tbar.set_postfix({'training steps': training_step})
 
-        if step == 0:
-            print('Not enough triplets.')
-            return None
-        else:
-            data_dict = {'loss': train_losses.last_avg,
-                         'num_triplets': train_triplets.last_avg,
-                         'lr': lr}
+        lr = ml_utils.get_lr(self.optimizer)
+        self.scheduler.step()
 
-            return data_dict
+        self.plotter.plot('learning rate', 'epoch', 'train', 'Learning Rate',
+                          epoch, lr)
+        self.plotter.plot('triplet number', 'epoch', 'triplets per step', 'Triplets Mining',
+                          epoch, data_dict['triplets_per_step'].last_avg())
 
-    def Evaluate(self,
-                 test_loader: DataLoader,
-                 name='validation',
-                 nrof_folds=10,
-                 distance_metric=0,
-                 val_far=1e-3):
+        if training_step > 0:
+            self.plotter.plot('loss', 'epoch', 'train_loss', 'Losses', epoch, data_dict['loss'].last_avg())
+            self.plotter.plot('distance', 'epoch', 'train_an', 'Pairwise mean distance',
+                              epoch, data_dict['dan'].last_avg())
+            self.plotter.plot('distance', 'epoch', 'train_ap', 'Pairwise mean distance',
+                              epoch, data_dict['dap'].last_avg())
 
-        return Evaluate(test_loader,
-                        self.model,
-                        self.device,
-                        self.step,
-                        plotter=self.plotter,
-                        name=name,
-                        nrof_folds=nrof_folds,
-                        distance_metric=distance_metric,
-                        val_far=val_far)
+            self.miner.plot(epoch)
+
+
+# class Triplet_Trainer(object):
+#     def __init__(self,
+#                  model: nn.Module,
+#                  miner,
+#                  loss: _Loss,
+#                  optimizer: Optimizer,
+#                  scheduler: _LRScheduler,
+#                  device,
+#                  plotter: utils.VisdomPlotter,
+#                  margin: int,
+#                  embedding_size: int,
+#                  eval_function):
+#
+#         self.model = model
+#         self.miner = miner
+#         self.optimizer = optimizer
+#         self.scheduler = scheduler
+#         self.plotter = plotter
+#         self.margin = margin
+#         self.embedding_size = embedding_size
+#
+#         self.eval_function = eval_function
+#         self.device = device
+#
+#         self.step = 0
+#         self.loss = loss
+#
+#     def Train_Epoch(self,
+#                     train_loader: DataLoader):
+#
+#         self.model.train()
+#         train_losses = utils.AverageMeter()
+#         # train_ap_distances = utils.AverageMeter()
+#         # train_an_distances = utils.AverageMeter()
+#         num_train_triplets = utils.AverageMeter()
+#
+#         # Training
+#
+#         train_triplets = torch.LongTensor()
+#         tbar = tqdm.tqdm(train_loader)
+#         step = 0
+#         for i, (local_batch, local_labels) in enumerate(tbar):
+#             # Transfer to GPU
+#             local_batch = local_batch.to(self.device)
+#             embeddings = self.model.forward(local_batch)
+#
+#             triplets = self.miner.get_triplets(embeddings.cpu(), local_labels)
+#             train_triplets = torch.cat((train_triplets, triplets), 0)
+#
+#             if train_triplets.size(0) >= 200:
+#                 a = embeddings[triplets[:, 0]]
+#                 p = embeddings[triplets[:, 1]]
+#                 n = embeddings[triplets[:, 2]]
+#
+#                 loss = self.loss(a, p, n)
+#                 self.optimizer.zero_grad()
+#                 loss.backward()
+#                 self.optimizer.step()
+#
+#                 # ap_distances = torch.norm(a - p, p=2, dim=1)
+#                 # an_distances = torch.norm(a - n, p=2, dim=1)
+#
+#                 train_losses.append(loss.item())
+#                 # train_ap_distances.append(ap_distances.mean().item())
+#                 # train_an_distances.append(an_distances.mean().item())
+#                 num_train_triplets.append(train_triplets.size(0))
+#
+#                 train_triplets = torch.LongTensor()
+#                 step += 1
+#
+#         lr = ml_utils.get_lr(self.optimizer)
+#         self.scheduler.step()
+#
+#         data_dict = {'loss': train_losses.last_avg(),
+#                      'num_triplets': num_train_triplets.last_avg(),
+#                      'lr': lr}
+#
+#         return data_dict
 
 
 class Dualtriplet_Trainer(object):
@@ -165,11 +206,10 @@ class Dualtriplet_Trainer(object):
                  optimizer: Optimizer,
                  scheduler: _LRScheduler,
                  device,
-                 plotter: utils.VisdomLinePlotter,
+                 plotter: utils.VisdomPlotter,
                  margin: int,
                  embedding_size: int,
-                 log_interval: int = 1,
-                 ):
+                 batch_size: int = 32):
 
         self.model = model
         self.miner = miner
@@ -178,273 +218,110 @@ class Dualtriplet_Trainer(object):
         self.plotter = plotter
         self.margin = margin
         self.embedding_size = embedding_size
+        self.batch_size = batch_size
 
         self.device = device
-        self.log_interval = log_interval
 
         self.step = 0
         self.loss = loss
 
     def Train_Epoch(self,
                     source_loader: DataLoader,
-                    target_loader: DataLoader):
+                    target_loader: DataLoader,
+                    epoch):
 
         self.model.train()
-
-        log_loss_dict = {}
-        train_losses = utils.AverageMeter()
-        for loss_key in self.loss.loss_keys:
-            log_loss_dict[loss_key] = utils.AverageMeter()
-
-        train_ap_distances = utils.AverageMeter()
-        train_an_distances = utils.AverageMeter()
-        num_dualtriplets = utils.AverageMeter()
-        num_srctriplets = utils.AverageMeter()
-        num_tgttriplets = utils.AverageMeter()
-        n_clusters = utils.AverageMeter()
-        clustering_scores = utils.AverageMeter()
+        data_dict = utils.AverageData_Dict()
+        num_dualtriplets = 0
+        total_dualtriplets = 0
 
         # Training
-        self.scheduler.step()
-        lr = get_lr(self.optimizer)
-        # self.plotter.plot('learning rate', 'step', 'train', 'Learning Rate',
-        #                   self.step, lr)
+        source_anchor_images = []
+        source_positive_images = []
+        source_negatives_images = []
+        target_anchor_images = []
+        target_positive_images = []
+        target_negatives_images = []
 
-        step = 0
+        training_step = 0
         data_loader = zip(source_loader, target_loader)
-        tbar = tqdm.tqdm(data_loader)
-        dual_triplets_list = []
+        tbar = tqdm.tqdm(data_loader, total=min(len(source_loader), len(target_loader)))
         for i, ((source_batch, source_labels), (target_batch, target_labels)) in enumerate(tbar):
-            # Forward on source
-            source_batch = source_batch.to(self.device)
-            source_embeddings = self.model.forward(source_batch)
+            source_batch, target_batch = source_batch.to(self.device), target_batch.to(self.device)
+            batch = torch.cat([source_batch, target_batch], 0)
 
-            # Forward on target
-            target_batch = target_batch.to(self.device)
-            target_embeddings = self.model.forward(target_batch)
+            self.model.eval()
+            with torch.no_grad():
+                embeddings = self.model(batch)
+                source_embeddings, target_embeddings = torch.chunk(embeddings, 2, 0)
 
-            dual_triplets, miner_dict = self.miner.get_dualtriplet(source_embeddings, source_labels, target_embeddings)
-            dual_triplets_list.append(dual_triplets)
-            dual_triplets_train = torch.cat(dual_triplets_list)
+            dualtriplets_indexes = self.miner.get_dualtriplet(source_embeddings, source_labels, target_embeddings, target_labels)
+            num_dualtriplets += len(dualtriplets_indexes)
 
-            if len(dual_triplets_train) > 100:
+            source_anchor_images.append(source_batch[dualtriplets_indexes[:, 0]])
+            source_positive_images.append(source_batch[dualtriplets_indexes[:, 1]])
+            source_negatives_images.append(source_batch[dualtriplets_indexes[:, 2]])
+            target_anchor_images.append(target_batch[dualtriplets_indexes[:, 3]])
+            target_positive_images.append(target_batch[dualtriplets_indexes[:, 4]])
+            target_negatives_images.append(target_batch[dualtriplets_indexes[:, 5]])
 
-                a = source_embeddings[dual_triplets_train[:, 0]]
-                p = source_embeddings[dual_triplets_train[:, 1]]
-                n = source_embeddings[dual_triplets_train[:, 2]]
-                ta = target_embeddings[dual_triplets_train[:, 3]]
-                tp = target_embeddings[dual_triplets_train[:, 4]]
-                tn = target_embeddings[dual_triplets_train[:, 5]]
+            if num_dualtriplets >= self.batch_size:
+                source_anchor_images = torch.cat(source_anchor_images, 0)[:self.batch_size]
+                source_positive_images = torch.cat(source_positive_images, 0)[:self.batch_size]
+                source_negatives_images = torch.cat(source_negatives_images, 0)[:self.batch_size]
+                target_anchor_images = torch.cat(target_anchor_images, 0)[:self.batch_size]
+                target_positive_images = torch.cat(target_positive_images, 0)[:self.batch_size]
+                target_negatives_images = torch.cat(target_negatives_images, 0)[:self.batch_size]
 
-                loss, losses_dict = self.loss(a, p, n, ta, tp, tn)
+                self.model.train()
+                image_tensor = torch.cat([source_anchor_images, source_positive_images, source_negatives_images,
+                                          target_anchor_images, target_positive_images, target_negatives_images], 0)
+                embeddings = self.model(image_tensor)
+                embeddings_list = torch.chunk(embeddings, 6, 0)
+
+                loss = self.loss(*embeddings_list)
                 self.optimizer.zero_grad()
                 loss.backward()
                 self.optimizer.step()
 
-                ap_distances = torch.norm(a - p, p=2, dim=1)
-                an_distances = torch.norm(a - n, p=2, dim=1)
+                src_ap_distances = torch.norm(embeddings_list[0] - embeddings_list[1], p=2, dim=1)
+                src_an_distances = torch.norm(embeddings_list[0] - embeddings_list[2], p=2, dim=1)
+                tgt_ap_distances = torch.norm(embeddings_list[3] - embeddings_list[4], p=2, dim=1)
+                tgt_an_distances = torch.norm(embeddings_list[3] - embeddings_list[5], p=2, dim=1)
 
-                train_losses.append(loss.item())
-                for loss_key in self.loss.loss_keys:
-                    log_loss_dict[loss_key].append(losses_dict[loss_key].item())
+                data_dict['src_dap'].append(src_ap_distances.mean().item())
+                data_dict['src_dan'].append(src_an_distances.mean().item())
+                data_dict['tgt_dap'].append(tgt_ap_distances.mean().item())
+                data_dict['tgt_dan'].append(tgt_an_distances.mean().item())
 
-                train_ap_distances.append(ap_distances.mean().item())
-                train_an_distances.append(an_distances.mean().item())
+                num_dualtriplets = 0
+                source_anchor_images = []
+                source_positive_images = []
+                source_negatives_images = []
+                target_anchor_images = []
+                target_positive_images = []
+                target_negatives_images = []
+                training_step += 1
+                total_dualtriplets += self.batch_size
+                tbar.set_postfix({'training steps': training_step})
 
-                num_dualtriplets.append(len(dual_triplets_train))
-                num_srctriplets.append(miner_dict['num_src_triplets'])
-                num_tgttriplets.append(miner_dict['num_tgt_triplets'])
-                n_clusters.append(miner_dict['n_clusters'])
-                clustering_scores.append(miner_dict['clustering_score'])
-
-                # if not (i + 1) % self.log_interval or (i + 1) == loader_length:
-                #
-                #     # Loss stats
-                #     self.plotter.plot('loss', 'step', 'train', 'Loss', self.step, train_losses.last_avg)
-                #     for loss_key in self.loss.loss_keys:
-                #         self.plotter.plot('loss', 'step', loss_key, 'Loss', self.step, log_loss_dict[loss_key].last_avg)
-                #
-                #     # Mining stats
-                #     self.plotter.plot('dualtriplet number', 'step', 'num dualtriplet', 'Dual Triplets Mining',
-                #                      self.step, num_dualtriplets.last_avg)
-                #     self.plotter.plot('dualtriplet number', 'step', 'num srctriplet', 'Dual Triplets Mining',
-                #                       self.step, num_srctriplets.last_avg)
-                #     self.plotter.plot('dualtriplet number', 'step', 'num tgttriplet', 'Dual Triplets Mining',
-                #                       self.step, num_tgttriplets.last_avg)
-                #     self.plotter.plot('num clusters', 'step', 'train', 'Number of Clusters',
-                #                       self.step, n_clusters.last_avg)
-                #     self.plotter.plot('scores', 'step', 'train', 'Clustering Scores',
-                #                       self.step, clustering_scores.last_avg)
-                #
-                #     # Distance stats
-                #     self.plotter.plot('distance', 'step', 'an', 'Pairwise mean distance',
-                #                       self.step, train_an_distances.last_avg)
-                #     self.plotter.plot('distance', 'step', 'ap', 'Pairwise mean distance',
-                #                       self.step, train_ap_distances.last_avg)
-
-                step += 1
-                dual_triplets_list = []
-        # tbar.set_description('Step {} - Loss: {:.4f}'.format(self.step, train_losses.avg))
-
-        if step == 0:
-            return None
-        else:
-            data_dict = {'L12': train_losses.last_avg,
-                         'num_dualtriplets': num_dualtriplets.last_avg,
-                         'num_srctriplets': num_srctriplets.last_avg,
-                         'num_tgttriplets': num_tgttriplets.last_avg,
-                         'n_clusters': n_clusters.last_avg,
-                         'clustering_scores': clustering_scores.last_avg,
-                         'dap': train_ap_distances.last_avg,
-                         'dan': train_an_distances.last_avg,
-                         'lr': lr}
-
-            for loss_key in self.loss.loss_keys:
-                data_dict[loss_key] = log_loss_dict[loss_key].last_avg
-
-            return data_dict
-
-
-    def Evaluate(self,
-                 test_loader: DataLoader,
-                 name='validation',
-                 nrof_folds=10,
-                 distance_metric=0,
-                 val_far=1e-3):
-
-        return Evaluate(test_loader,
-                        self.model,
-                        self.device,
-                        self.step,
-                        plotter=self.plotter,
-                        name=name,
-                        nrof_folds=nrof_folds,
-                        distance_metric=distance_metric,
-                        val_far=val_far)
-
-
-class Supervised_Dualtriplet_Trainer(object):
-    def __init__(self,
-                 model: nn.Module,
-                 miner,
-                 loss: _Loss,
-                 optimizer: Optimizer,
-                 scheduler: _LRScheduler,
-                 device,
-                 margin: int):
-
-        self.model = model
-        self.miner = miner
-        self.optimizer = optimizer
-        self.scheduler = scheduler
-        self.margin = margin
-        self.loss = loss
-
-        self.device = device
-
-    def Train_Epoch(self,
-                    source_loader: DataLoader,
-                    target_loader: DataLoader):
-
-        self.model.train()
-
-        log_loss_dict = {}
-        train_losses = utils.AverageMeter()
-        for loss_key in self.loss.loss_keys:
-            log_loss_dict[loss_key] = utils.AverageMeter()
-
-        train_ap_distances = utils.AverageMeter()
-        train_an_distances = utils.AverageMeter()
-        num_dualtriplets = utils.AverageMeter()
-        num_srctriplets = utils.AverageMeter()
-        num_tgttriplets = utils.AverageMeter()
-
-        # Training
+        lr = ml_utils.get_lr(self.optimizer)
         self.scheduler.step()
-        lr = get_lr(self.optimizer)
 
-        step = 0
-        data_loader = zip(source_loader, target_loader)
-        tbar = tqdm.tqdm(data_loader)
-        dual_triplets_list = []
-        for i, ((source_batch, source_labels), (target_batch, target_labels)) in enumerate(tbar):
-            # Forward on source
-            source_batch = source_batch.to(self.device)
-            source_embeddings = self.model.forward(source_batch)
+        self.plotter.plot('learning rate', 'epoch', 'train', 'Learning Rate',
+                     epoch, lr)
+        self.plotter.plot('dualtriplet number', 'epoch', 'total dualtriplets', 'Dual Triplets Mining',
+                          epoch, total_dualtriplets)
 
-            # Forward on target
-            target_batch = target_batch.to(self.device)
-            target_embeddings = self.model.forward(target_batch)
+        if training_step > 0:
+            # self.plotter.plot('distance', 'epoch', 'src_an', 'Pairwise mean distance',
+            #              epoch, data_dict['src_dan'].last_avg())
+            # self.plotter.plot('distance', 'epoch', 'src_ap', 'Pairwise mean distance',
+            #              epoch, data_dict['src_dap'].last_avg())
+            # self.plotter.plot('distance', 'epoch', 'tgt_an', 'Pairwise mean distance',
+            #              epoch, data_dict['tgt_dan'].last_avg())
+            # self.plotter.plot('distance', 'epoch', 'tgt_ap', 'Pairwise mean distance',
+            #              epoch, data_dict['tgt_dap'].last_avg())
 
-            dual_triplets, miner_dict = self.miner.get_dualtriplet(source_embeddings,
-                                                                   source_labels,
-                                                                   target_embeddings,
-                                                                   target_labels)
-            dual_triplets_list.append(dual_triplets)
-            dual_triplets_train = torch.cat(dual_triplets_list)
-
-            if len(dual_triplets_train) > 200:
-
-                a = source_embeddings[dual_triplets_train[:, 0]]
-                p = source_embeddings[dual_triplets_train[:, 1]]
-                n = source_embeddings[dual_triplets_train[:, 2]]
-                ta = target_embeddings[dual_triplets_train[:, 3]]
-                tp = target_embeddings[dual_triplets_train[:, 4]]
-                tn = target_embeddings[dual_triplets_train[:, 5]]
-
-                loss, losses_dict = self.loss(a, p, n, ta, tp, tn)
-                self.optimizer.zero_grad()
-                loss.backward()
-                self.optimizer.step()
-
-                ap_distances = torch.norm(a - p, p=2, dim=1)
-                an_distances = torch.norm(a - n, p=2, dim=1)
-
-                train_losses.append(loss.item())
-                for loss_key in self.loss.loss_keys:
-                    log_loss_dict[loss_key].append(losses_dict[loss_key].item())
-
-                train_ap_distances.append(ap_distances.mean().item())
-                train_an_distances.append(an_distances.mean().item())
-
-                num_dualtriplets.append(len(dual_triplets_train))
-                num_srctriplets.append(miner_dict['num_src_triplets'])
-                num_tgttriplets.append(miner_dict['num_tgt_triplets'])
-
-                step += 1
-                dual_triplets_list = []
-
-        if step == 0:
-            return None
-        else:
-            data_dict = {'L12': train_losses.last_avg,
-                         'num_dualtriplets': num_dualtriplets.last_avg,
-                         'num_srctriplets': num_srctriplets.last_avg,
-                         'num_tgttriplets': num_tgttriplets.last_avg,
-                         'n_clusters': 0,
-                         'clustering_scores': 0,
-                         'dap': train_ap_distances.last_avg,
-                         'dan': train_an_distances.last_avg,
-                         'lr': lr}
-
-            for loss_key in self.loss.loss_keys:
-                data_dict[loss_key] = log_loss_dict[loss_key].last_avg
-
-            return data_dict
-
-
-    def Evaluate(self,
-                 test_loader: DataLoader,
-                 name='validation',
-                 nrof_folds=10,
-                 distance_metric=0,
-                 val_far=1e-3):
-
-        return Evaluate(test_loader,
-                        self.model,
-                        self.device,
-                        0,
-                        name=name,
-                        nrof_folds=nrof_folds,
-                        distance_metric=distance_metric,
-                        val_far=val_far)
+            self.loss.plot(epoch)
+            self.miner.plot(epoch)

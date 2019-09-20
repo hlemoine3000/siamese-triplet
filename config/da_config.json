@@ -2,10 +2,10 @@
   "name": "config",
   "version": "1.0.0",
 
-  "experiment2": "da_vggface2_to_video3",
-  "experiment": "da_video4_to_video1",
-  "mode": "dualtriplet",
-  "mode2": "supervised_dualtriplet",
+  "experiment": "da_video3_to_video4",
+  "experiment2": "da_bbt",
+  "miner": "dualtriplet",
+  "miner2": "supervised_dualtriplet",
 
   "dataset": {
     "vggface2": {
@@ -33,6 +33,12 @@
       "video4_pairs": "dataset_utils/pair_files/coxs2v/video4_pairs.txt"
     },
 
+    "bbt": {
+      "ep01_dir": "/export/livia/data/lemoineh/BBT/ep01",
+      "video_track_path": "/export/livia/data/lemoineh/BBT/ep01",
+      "pkl_dataset_path": "/export/livia/data/lemoineh/torch_facetripletloss/roi/labeled_roi.pkl"
+    },
+
     "cross_validation": {
       "num_fold": 10,
       "num_train_folds": 2,
@@ -42,36 +48,37 @@
 
   "output": {
     "output_dir": "/export/livia/data/lemoineh/torch_facetripletloss/models",
-    "save_interval": 10
+    "save_interval": 50
   },
 
   "model": {
     "model_arch": "resnet50",
     "pretrained_imagenet": false,
     "checkpoint": true,
-    "checkpoint_path2": "/export/livia/data/lemoineh/torch_facetripletloss/models/COXfinetune2/model_169.pth",
-    "checkpoint_path1": "/export/livia/data/lemoineh/torch_facetripletloss/models/TripletLossPlots6/model_199.pth",
-    "checkpoint_path": "/export/livia/data/lemoineh/torch_facetripletloss/models/COXvideo4_finetune/model_49.pth",
+    "checkpoint_path": "/export/livia/data/lemoineh/torch_facetripletloss/models/COXvideo3_finetune/model_50.pth",
+    "checkpoint_path2": "/export/livia/data/lemoineh/torch_facetripletloss/models/TripletLossPlots6/model_219.pth",
     "input_size": 160,
     "embedding_size": 128
   },
 
   "hyperparameters": {
 
-    "margin": 0.2,
+    "margin": 1.0,
     "lamda": [1.0, 1.0],
 
-    "n_epochs": 60,
+    "n_epochs": 50,
     "image_size": 160,
     "images_per_person": 5,
-    "people_per_batch": 15,
+    "people_per_batch": 20,
 
     "optimizer": "SGD",
-    "learning_rate": 0.001,
+    "learning_rate": 0.0005,
     "learning_rate_decay_epochs": 4,
     "learning_rate_decay_factor": 0.98,
     "weight_decay": 2e-4,
     "moving_average_decay": 0.9999,
+    "batch_size": 32,
+    "deadzone_ratio": 0.2,
 
     "val_far": 1e-2,
 
@@ -81,7 +88,6 @@
   },
 
   "visdom": {
-    "environment_name": "DA2_video4_video1_L12_m0.2_l0.001",
     "port": 8097,
     "log_interval": 5
   }

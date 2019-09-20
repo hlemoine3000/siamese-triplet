@@ -1,16 +1,12 @@
 
 import argparse
 import sys
-import numpy as np
-import tqdm
-import pandas as pd
 import json
 from copy import deepcopy
 
 import torch
 from torch.utils.data import DataLoader
-from torchvision import transforms, datasets
-
+from torchvision import transforms
 from sklearn.manifold import TSNE
 
 import utils
@@ -124,7 +120,7 @@ if __name__ == '__main__':
     model = model.to(device)
     model.eval()
 
-    plotter = utils.VisdomLinePlotter(env_name=config.visdom.environment_name, port=config.visdom.port)
+    plotter = utils.VisdomPlotter(env_name=config.visdom.environment_name, port=config.visdom.port)
 
     # Launch embeddings extraction
     embeddings = []

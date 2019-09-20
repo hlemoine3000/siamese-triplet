@@ -6,6 +6,7 @@ from .inceptionresnetv2 import InceptionResNetV2
 from .resnet import resnet18, resnet34, resnet50, resnet101, resnet152
 from .resnet_vggface2 import resnet50_vggface2
 from .model_irse import IR_50
+from .embeddingNet import EmbeddingNet
 
 def load_model(model_arch,
                device,
@@ -26,6 +27,8 @@ def load_model(model_arch,
         model = resnet152(num_classes=embedding_size, pretrained=imgnet_pretrained)
     elif model_arch == "inceptionresnetv2":
         model = InceptionResNetV2(bottleneck_layer_size=embedding_size)
+    elif model_arch == "lenet":
+        model = EmbeddingNet(n_outputs=embedding_size)
     elif model_arch == "ir50":
         model = IR_50([112, 112])
         if not (checkpoint_path is None):
