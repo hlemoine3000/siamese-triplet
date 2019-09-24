@@ -53,9 +53,9 @@ def evaluate_clustering(features: np.array,
 
         if plotter:
             plotter.plot('metrics value', 'epoch', '{}_purity'.format(cluster_method), 'Clustering Performance', epoch,
-                         np.mean(purity))
+                         purity)
             plotter.plot('metrics value', 'epoch', '{}_v_score'.format(cluster_method), 'Clustering Performance', epoch,
-                         np.mean(v_score))
+                         v_score)
             plotter.scatter_plot('{} Predictions'.format(cluster_method),
                                  tsne_features,
                                  predictions)

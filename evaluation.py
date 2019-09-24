@@ -6,10 +6,11 @@ import tqdm
 import pandas as pd
 import json
 from sklearn import metrics
+from sklearn import cluster
 
 import torch
 from torch.utils.data import DataLoader
-from torchvision import transforms, datasets
+from torchvision import transforms
 
 from copy import deepcopy
 import utils
@@ -25,24 +26,40 @@ def get_eval_function(function_name):
     else:
         raise Exception('Evaluation function {} does not exist.'.format(function_name))
 
+def kmeans_evaluation(test_loader: DataLoader,
+                            model,
+                            device,
+                            test_name: str,
+                            plotter: VisdomPlotter = None,
+                            epoch: int = 0,
+                            nrof_folds=10,
+                            distance_metric=0,
+                            val_far=1e-3):
+    """Evaluation for target encoder by source classifier on target dataset."""
+    # set eval state for Dropout and BN layers
+    features = []
+    labels = []
+    model.eval()
+    tbar = tqdm.tqdm(test_loader)
+    with torch.no_grad():
+        for images_batch, labels_batch in tbar:
+            # Forward pass
+            images_batch = images_batch.to(device)
+            features.append(model.forward(images_batch))
+            labels.append(deepcopy(labels_batch))
 
-# def knn_evaluation(model, src_data_loader, tgt_data_loader):
-#     """Evaluation for target encoder by source classifier on target dataset."""
-#     # set eval state for Dropout and BN layers
-#     model.eval()
-#     with torch.no_grad():
-#         for image_batch, label_batch in
-#         X, y = losses.extract_embeddings(src_data_loader, src_data_loader)
-#         Xtest, ytest = losses.extract_embeddings(tgt_data_loader, tgt_data_loader)
-#
-#         clf = neighbors.KNeighborsClassifier(n_neighbors=2)
-#         clf.fit(X, y)
-#         y_pred = clf.predict(Xtest)
-#
-#         acc = (y_pred == ytest).mean()
-#         # print(acc)
-#
-#     return acc
+    features = torch.cat(features, 0).cpu().numpy()
+    labels = torch.cat(labels, 0).cpu().numpy()
+
+    clusterer = cluster.KMeans(n_clusters=10, random_state=10)
+    pred_labels = clusterer.fit_predict(features)
+
+    purity = clustering.purity_score(labels, pred_labels)
+
+    print('Clustering purity: {:.3}'.format(purity))
+    plotter.plot('metrics value', 'epoch', '{}_purity'.format(test_name), 'Clustering Performance', epoch,
+                 purity)
+
 
 def video_description_evaluate(test_loader: DataLoader,
                                model,

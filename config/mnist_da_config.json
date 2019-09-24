@@ -1,8 +1,9 @@
 {
   "name": "config",
   "version": "1.0.0",
+  "debug": true,
 
-  "experiment": "train_uspsbig",
+  "experiment": "da_mnistbig_to_uspsbig",
   "miner": "dualtriplet",
   "miner2": "supervised_dualtriplet",
 
@@ -52,27 +53,27 @@
   "model": {
     "model_arch": "lenet",
     "pretrained_imagenet": false,
-    "checkpoint": false,
-    "checkpoint_path2": "/export/livia/data/lemoineh/torch_facetripletloss/models/BBTfinetune/model_20.pth",
-    "checkpoint_path": "/export/livia/data/lemoineh/torch_facetripletloss/models/TripletLossPlots6/model_219.pth",
+    "checkpoint": true,
+    "checkpoint_path": "/export/livia/data/lemoineh/torch_facetripletloss/models/train_mnistbig_m1.0/model_39.pth",
     "input_size": 28,
     "embedding_size": 128
   },
 
   "hyperparameters": {
 
-    "margin": 1.0,
+    "margin": 5.0,
     "lamda": [1.0, 1.0],
 
-    "n_epochs": 100,
+    "n_epochs": 50,
     "image_size": 160,
     "images_per_person": 5,
     "people_per_batch": 15,
 
     "optimizer": "SGD",
-    "learning_rate": 0.005,
+    "learning_rate": 0.0005,
     "learning_rate_decay_factor": 0.98,
-    "batch_size": 200,
+    "batch_size": 64,
+    "deadzone_ratio": 0.1,
 
     "val_far": 1e-2,
 

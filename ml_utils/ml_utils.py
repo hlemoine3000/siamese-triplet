@@ -4,6 +4,13 @@ import  torch
 from torch import nn
 from torch.utils.data import DataLoader
 
+
+def pdist(vectors):
+    distance_matrix = -2 * vectors.mm(torch.t(vectors)) + vectors.pow(2).sum(dim=1).view(1, -1) + vectors.pow(2).sum(
+        dim=1).view(-1, 1)
+    return distance_matrix
+
+
 def extract_features(dataloader: DataLoader,
                      model: nn.Module,
                      device):

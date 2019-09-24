@@ -31,12 +31,34 @@ def path_leaf(path):
     head, tail = ntpath.split(path)
     return tail or ntpath.basename(head)
 
+def generate_experiment_name(config):
+    experiment_name = config.experiment
+
+    experiment_name += '_m{}'.format(config.hyperparameters.margin)
+
+    return experiment_name
+
 def main(args):
 
     print('Feature extractor training.')
     print('CONFIGURATION:\t{}'.format(args.config))
     with open(args.config) as json_config_file:
         config = utils.AttrDict(json.load(json_config_file))
+
+    # Set up output directory
+    experiment_name = generate_experiment_name(config)
+    if os.path.isdir(os.path.join(os.path.expanduser(config.output.output_dir), experiment_name)):
+        dir_count = 1
+        experiment_name += '_1'
+        while os.path.isdir(os.path.join(os.path.expanduser(config.output.output_dir), experiment_name)):
+            dir_count += 1
+            experiment_name = experiment_name[:-2] + '_{}'.format(dir_count)
+    model_dir = os.path.join(os.path.expanduser(config.output.output_dir), experiment_name)
+    os.makedirs(model_dir)
+    print('Model saved at {}'.format(model_dir))
+
+    config_filename = path_leaf(args.config)
+    copyfile(args.config, os.path.join(model_dir, config_filename))
 
     # CUDA for PyTorch
     use_cuda = torch.cuda.is_available()
@@ -65,7 +87,7 @@ def main(args):
     # scheduler = lr_scheduler.StepLR(optimizer, 5, gamma=0.1)
     scheduler = lr_scheduler.ExponentialLR(optimizer, config.hyperparameters.learning_rate_decay_factor)
 
-    plotter = utils.VisdomPlotter(env_name=config.visdom.environment_name, port=config.visdom.port)
+    plotter = utils.VisdomPlotter(env_name=experiment_name, port=config.visdom.port)
 
     miner = miners.FunctionSemihardTripletSelector(config.hyperparameters.margin, plotter)
 
@@ -82,17 +104,6 @@ def main(args):
                                          config.model.embedding_size,
                                          evaluation.pair_evaluate,
                                          batch_size=config.hyperparameters.batch_size)
-
-    # Set up output directory
-    # subdir = datetime.strftime(datetime.now(), '%Y%m%d-%H%M%S')
-    subdir = config.visdom.environment_name
-    model_dir = os.path.join(os.path.expanduser(config.output.output_dir), subdir)
-    if not os.path.isdir(model_dir):  # Create the model directory if it doesn't exist
-        os.makedirs(model_dir)
-    # else:
-    #     raise Exception('Environment name {} already taken.'.format(subdir))
-    config_filename = path_leaf(args.config)
-    copyfile(args.config, os.path.join(model_dir, config_filename))
 
     # Loop over epochs
     epoch = 0

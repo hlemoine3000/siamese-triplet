@@ -1,8 +1,9 @@
 
 import utils
-from dataset_utils import coxs2v, vggface2, bbt
+from dataset_utils import coxs2v, vggface2, bbt, mnist, usps, mnistBig, uspsBig
 from dataset_utils import dataloaders
 from torchvision import transforms
+import evaluation
 
 
 def Get_DADataloaders(exp_name, config):
@@ -380,6 +381,74 @@ def Get_DADataloaders(exp_name, config):
                                                             test_folds,
                                                             nrof_folds,
                                                             ['lfw', 'bbt_ep01'])
+    elif exp_name == 'da_mnist_to_usps':
+
+        source_loader = mnist.get_mnist("train",
+                                       batch_size=config.hyperparameters.batch_size)
+
+        target_loader = usps.get_usps("train",
+                                      batch_size=config.hyperparameters.batch_size)
+
+        test_loaders_list = [('mnist',
+                              mnist.get_mnist("val",
+                                              batch_size=config.hyperparameters.batch_size),
+                              evaluation.kmeans_evaluation),
+                             ('usps',
+                              usps.get_usps("val",
+                                            batch_size=config.hyperparameters.batch_size),
+                              evaluation.kmeans_evaluation)
+                             ]
+    elif exp_name == 'da_mnistbig_to_uspsbig':
+
+        source_loader = mnistBig.get_mnist("train",
+                                       batch_size=config.hyperparameters.batch_size)
+
+        target_loader = uspsBig.get_usps("train",
+                                      batch_size=config.hyperparameters.batch_size)
+
+        test_loaders_list = [('mnist',
+                              mnist.get_mnist("val",
+                                              batch_size=config.hyperparameters.batch_size),
+                              evaluation.kmeans_evaluation),
+                             ('usps',
+                              usps.get_usps("val",
+                                            batch_size=config.hyperparameters.batch_size),
+                              evaluation.kmeans_evaluation)
+                             ]
+    elif exp_name == 'da_usps_to_mnist':
+
+        source_loader = mnistBig.get_mnist("train",
+                                       batch_size=config.hyperparameters.batch_size)
+
+        target_loader = uspsBig.get_usps("train",
+                                      batch_size=config.hyperparameters.batch_size)
+
+        test_loaders_list = [('mnist',
+                              mnist.get_mnist("val",
+                                              batch_size=config.hyperparameters.batch_size),
+                              evaluation.kmeans_evaluation),
+                             ('usps',
+                              usps.get_usps("val",
+                                            batch_size=config.hyperparameters.batch_size),
+                              evaluation.kmeans_evaluation)
+                             ]
+    elif exp_name == 'da_uspsbig_to_mnistbig':
+
+        source_loader = mnistBig.get_mnist("train",
+                                       batch_size=config.hyperparameters.batch_size)
+
+        target_loader = uspsBig.get_usps("train",
+                                      batch_size=config.hyperparameters.batch_size)
+
+        test_loaders_list = [('mnist',
+                              mnist.get_mnist("val",
+                                              batch_size=config.hyperparameters.batch_size),
+                              evaluation.kmeans_evaluation),
+                             ('usps',
+                              usps.get_usps("val",
+                                            batch_size=config.hyperparameters.batch_size),
+                              evaluation.kmeans_evaluation)
+                             ]
     else:
         raise Exception('Experiment {} does not exist.'.format(exp_name))
 

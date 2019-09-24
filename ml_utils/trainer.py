@@ -305,23 +305,19 @@ class Dualtriplet_Trainer(object):
                 total_dualtriplets += self.batch_size
                 tbar.set_postfix({'training steps': training_step})
 
+                self.loss.plot(self.step)
+                self.miner.plot(self.step)
+                self.step += 1
+
         lr = ml_utils.get_lr(self.optimizer)
         self.scheduler.step()
 
-        self.plotter.plot('learning rate', 'epoch', 'train', 'Learning Rate',
-                     epoch, lr)
-        self.plotter.plot('dualtriplet number', 'epoch', 'total dualtriplets', 'Dual Triplets Mining',
-                          epoch, total_dualtriplets)
-
-        if training_step > 0:
-            # self.plotter.plot('distance', 'epoch', 'src_an', 'Pairwise mean distance',
-            #              epoch, data_dict['src_dan'].last_avg())
-            # self.plotter.plot('distance', 'epoch', 'src_ap', 'Pairwise mean distance',
-            #              epoch, data_dict['src_dap'].last_avg())
-            # self.plotter.plot('distance', 'epoch', 'tgt_an', 'Pairwise mean distance',
-            #              epoch, data_dict['tgt_dan'].last_avg())
-            # self.plotter.plot('distance', 'epoch', 'tgt_ap', 'Pairwise mean distance',
-            #              epoch, data_dict['tgt_dap'].last_avg())
-
-            self.loss.plot(epoch)
-            self.miner.plot(epoch)
+        # self.plotter.plot('learning rate', 'epoch', 'train', 'Learning Rate',
+        #              epoch, lr)
+        # self.plotter.plot('dualtriplet number', 'epoch', 'total dualtriplets', 'Dual Triplets Mining',
+        #                   epoch, total_dualtriplets)
+        #
+        # if training_step > 0:
+        #
+        #     self.loss.plot(epoch)
+        #     self.miner.plot(epoch)

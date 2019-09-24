@@ -7,36 +7,37 @@ from torchvision import datasets, transforms
 class MNIST(data.Dataset):
    
     def __init__(self, split, transform=None):
-      #self.transform = transformers.get_basic_transformer()
-      self.split = split 
-      self.transform = transform
+        #self.transform = transformers.get_basic_transformer()
+        self.split = split
+        self.transform = transform
 
-      pwd = os.path.dirname(os.path.abspath(__file__))
+        pwd = os.path.dirname(os.path.abspath(__file__))
 
-      if split == "train":
+        if split == "train":
 
+            train_dataset = datasets.MNIST(pwd, train=True, download=True,
+                                           transform=None)
+            self.X = train_dataset.data.float() / 255.
+            self.y = train_dataset.targets
 
-        train_dataset = datasets.MNIST(pwd, train=True, download=True,
-                                       transform=None)
-        self.X = train_dataset.train_data.float() / 255.
-        self.y = train_dataset.train_labels
-        
-        np.random.seed(2)
-        ind = np.random.choice(len(train_dataset), len(train_dataset), replace=False)
-        self.X = self.X[ind]
-        self.y = self.y[ind]
+            np.random.seed(2)
+            ind = np.random.choice(len(train_dataset), len(train_dataset), replace=False)
+            self.X = self.X[ind]
+            self.y = self.y[ind]
 
-      elif split == "val":
-        test_dataset = datasets.MNIST(pwd, train=False, download=True,
-                                      transform=None)
+        elif split == "val":
+            test_dataset = datasets.MNIST(pwd, train=False, download=True,
+                                          transform=None)
 
-        self.X = test_dataset.test_data.float() / 255.
-        self.y = test_dataset.test_labels
+            self.X = test_dataset.test_data.float() / 255.
+            self.y = test_dataset.test_labels
+
+        self.X = self.X.unsqueeze(1)
 
     def __getitem__(self, index):
         X, y = self.X[index].clone(), self.y[index].clone()
         
-        X = self.transform(X[None])
+        X = self.transform(X)
 
         return X, y
 
@@ -48,9 +49,7 @@ class MNIST(data.Dataset):
 def get_mnist(split, batch_size=50):
     """Get MNIST dataset loader."""
     # image pre-processing
-    pre_process = transforms.Compose([transforms.Normalize(
-                                          mean=[0.5,0.5,0.5],
-                                          std=[0.5,0.5,0.5])])
+    pre_process = transforms.Compose([transforms.Normalize([0.5], [0.5])])
 
 
     # dataset and data loader

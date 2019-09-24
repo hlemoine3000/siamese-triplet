@@ -77,9 +77,7 @@ class USPS(data.Dataset):
 def get_usps(split, batch_size=50):
     """Get USPS dataset loader."""
     # image pre-processing
-    pre_process = transforms.Compose([transforms.Normalize(
-                                          mean=[0.5,0.5,0.5],
-                                          std=[0.5,0.5,0.5])])
+    pre_process = transforms.Compose([transforms.Normalize([0.5], [0.5])])
 
     # dataset and data loader
     usps_dataset = USPS(root="datasets",

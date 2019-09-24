@@ -60,12 +60,16 @@ def main(args):
         config = utils.AttrDict(json.load(json_config_file))
 
     # Set up output directory
-    experiment_name = generate_experiment_name(config)
-    if os.path.isdir(os.path.join(os.path.expanduser(config.output.output_dir), experiment_name)):
-        dir_count = 0
-        experiment_name += '_2'
-        while os.path.isdir(os.path.join(os.path.expanduser(config.output.output_dir), experiment_name)):
-            experiment_name = experiment_name[-2] + '_{}'.format(dir_count)
+    if config.debug:
+        experiment_name = 'debug'
+    else:
+        experiment_name = generate_experiment_name(config)
+        if os.path.isdir(os.path.join(os.path.expanduser(config.output.output_dir), experiment_name)):
+            dir_count = 1
+            experiment_name += '_1'
+            while os.path.isdir(os.path.join(os.path.expanduser(config.output.output_dir), experiment_name)):
+                dir_count += 1
+                experiment_name = experiment_name[:-2] + '_{}'.format(dir_count)
     model_dir = os.path.join(os.path.expanduser(config.output.output_dir), experiment_name)
     os.makedirs(model_dir)
     print('Model saved at {}'.format(model_dir))
