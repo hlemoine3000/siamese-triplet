@@ -14,8 +14,8 @@ from sklearn import metrics
 import utils
 from ml_utils import clustering
 import models
-from dataset_utils.dataset import ImageFolderTrackDataset
-from vis_embeddings import TSNE_Visualizer
+from dataset_utils.dataset import ImageFolderTrackDataset_with_Labels
+from old.vis_embeddings import TSNE_Visualizer
 from copy import deepcopy
 
 
@@ -101,7 +101,7 @@ if __name__ == '__main__':
         transforms.ToTensor()
     ])
 
-    video_dataset = ImageFolderTrackDataset('/export/livia/data/lemoineh/BBT/ep01', transform=data_transform)
+    video_dataset = ImageFolderTrackDataset_with_Labels('/export/livia/data/lemoineh/BBT/ep01', transform=data_transform)
     video_dataloader = data.DataLoader(video_dataset,
                                        num_workers=8,
                                        batch_size=100,

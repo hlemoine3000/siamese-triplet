@@ -1,14 +1,15 @@
+
 import scipy.io
 import numpy as np
 import tqdm
-import cv2
 
 from PIL import Image
 import torch
 from torch.utils import data
 
+import evaluation
 from utils.video import Video_Reader
-from dataset_utils.dataset import TrackDataset, ImageFolderTrackDataset
+from dataset_utils.dataset import ImageFolderTrackDataset_with_Labels, ImageFolderTrackDataset
 from dataset_utils.sampler import TrackSampler
 
 # original_width = 1920
@@ -150,7 +151,7 @@ class BBTTrackDataset(data.Dataset):
             for annotation in frame_annotations:
 
                 cropped_image = image[annotation[1]: annotation[3], annotation[0]: annotation[2], :]
-                cropped_image = cv2.cvtColor(cropped_image, cv2.COLOR_BGR2RGB)
+                cropped_image = cropped_image[:,:,::-1] # BGR to RGB
                 # cropped_image = np.transpose(cropped_image, (2, 0, 1))
                 cropped_image = Image.fromarray(cropped_image)
                 cropped_image_list.append(cropped_image)
@@ -198,28 +199,28 @@ class BBTTrackDataset(data.Dataset):
     def __len__(self):
         return len(self.cropped_image_list)
 
-def get_trainset(pkl_file,
+def get_trainset(test_dir,
                  samples_per_class: int,
                  transform=None):
 
     print('TRAIN SET BBT.')
-    dataset = TrackDataset(pkl_file,
-                           transform=transform)
+    dataset = ImageFolderTrackDataset(test_dir,
+                                      transform=transform)
     sampler = TrackSampler(dataset,
                            samples_per_class)
     dataloader = torch.utils.data.DataLoader(dataset,
                                              num_workers=8,
-                                             batch_sampler=sampler,
-                                             pin_memory=True)
+                                             batch_sampler=sampler)
 
     return dataloader
 
-def get_testset(test_dir,
-                data_transform,
-                batch_size):
+def get_evaluator(test_dir,
+                  data_transform,
+                  batch_size) -> evaluation.Evaluator:
 
-    video_dataset = ImageFolderTrackDataset(test_dir, transform=data_transform)
-    return data.DataLoader(video_dataset,
+    video_dataset = ImageFolderTrackDataset_with_Labels(test_dir, transform=data_transform)
+    test_loader = data.DataLoader(video_dataset,
                                        num_workers=8,
-                                       batch_size=batch_size,
-                                       pin_memory=True)
+                                       batch_size=batch_size)
+
+    return evaluation.Video_Description_Evaluator(test_loader, 'bbt_ep01')

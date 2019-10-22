@@ -4,6 +4,7 @@ import numpy as np
 from collections import OrderedDict
 from PIL import Image
 import tqdm
+import ntpath
 
 
 class FoldGenerator():
@@ -101,6 +102,10 @@ class AttrDict(dict):
     __setattr__ = __setitem__
 
 
+def gaussian(x, mu, sig):
+    return 1 / (sig * np.sqrt(2*np.pi)) * np.exp(-((x - mu) ** 2) / (2 * sig ** 2))
+
+
 def make_square(im: Image, fill_color=(0, 0, 0, 0)):
     x, y = im.size
     size = max(x, y)
@@ -196,6 +201,7 @@ def get_paths_from_file(subject_filename,
 
     return path_list, label_list
 
+
 def get_pairs_from_fold(still_source,
                         video_source,
                         pair_file,
@@ -246,6 +252,7 @@ def get_pairs_from_fold(still_source,
 
     return path_list, issame_list
 
+
 def add_extension(path):
     if os.path.exists(path + '.jpg'):
         return path + '.jpg'
@@ -257,7 +264,27 @@ def add_extension(path):
         raise RuntimeError('No file "%s" with extension png or jpg.' % path)
 
 
-def read_pairs(pairs_filename):
+# Python3 program to Convert a
+# list to dictionary
+# https://www.geeksforgeeks.org/python-convert-a-list-to-dictionary/
+def list_to_dict(lst) -> dict:
+    res_dct = {lst[i]: lst[i + 1] for i in range(0, len(lst), 2)}
+    return res_dct
+
+
+def read_file_to_list(filename: str):
+    with open(filename) as file:
+        file_list = [[int(n) if n.rstrip("\n").isnumeric() else n for n in line.split(',')] for line in file]
+    return file_list
+
+
+def write_list_to_file(filename: str,
+                       list_to_write: list):
+    with open(filename, 'w') as file:
+        file.writelines(','.join(str(j) for j in i) + '\n' for i in list_to_write)
+
+
+def read_pairs(pairs_filename: str):
     pairs = []
     with open(pairs_filename, 'r') as f:
         for line in f.readlines()[1:]:
@@ -267,7 +294,7 @@ def read_pairs(pairs_filename):
 
 
 # Set up for evaluation
-def Get_Pairs(pairs_path,
+def get_pairs(pairs_path,
               images_path):
     nrof_skipped_pairs = 0
     path_list = []
@@ -312,3 +339,8 @@ def unique(list1):
             unique_list.append(x)
             # print list
     return unique_list
+
+
+def path_leaf(path):
+    head, tail = ntpath.split(path)
+    return tail or ntpath.basename(head)

@@ -2,7 +2,6 @@
 import os
 import numpy as np
 import tqdm
-import pickle
 
 from PIL import Image
 from torch.utils import data
@@ -127,6 +126,45 @@ class DatasetFolder(data.Dataset):
         return fmt_str
 
 
+def _make_dataset(dir, class_to_idx, extensions):
+    images = []
+    dir = os.path.expanduser(dir)
+    for target in sorted(class_to_idx.keys()):
+        d = os.path.join(dir, target)
+        if not os.path.isdir(d):
+            continue
+
+        for root, _, fnames in sorted(os.walk(d)):
+            for fname in sorted(fnames):
+                if has_file_allowed_extension(fname, extensions):
+                    path = os.path.join(root, fname)
+                    track_idx = int(''.join(filter(str.isdigit, target)))
+                    item = (path, track_idx)
+                    images.append(item)
+
+    return images
+
+
+def _find_classes(self, dir):
+    """
+    Finds the class folders in a dataset.
+
+    Args:
+        dir (string): Root directory path.
+
+    Returns:
+        tuple: (classes, class_to_idx) where classes are relative to (dir), and class_to_idx is a dictionary.
+
+    Ensures:
+        No class is a subdirectory of another.
+    """
+
+    classes = [d.name for d in os.scandir(dir) if d.is_dir()]
+    classes.sort()
+    class_to_idx = {classes[i]: i for i in range(len(classes))}
+    return classes, class_to_idx
+
+
 class ImageFolderTrackDataset(data.Dataset):
     """A generic data loader where the samples are arranged in this way: ::
 
@@ -153,9 +191,14 @@ class ImageFolderTrackDataset(data.Dataset):
             targets (list): The class_index value for each image in the dataset
         """
 
-    def __init__(self, root, transform=None, target_transform=None):
+    def __init__(self, root,
+                 transform=None,
+                 target_transform=None):
         classes, class_to_idx = self._find_classes(root)
-        samples = self._make_dataset(root, class_to_idx, IMG_EXTENSIONS)
+        samples = _make_dataset(root, class_to_idx, IMG_EXTENSIONS)
+        cooccuring_tracks_file = os.path.join(root, "cooccurring_tracks.txt")
+        with open(cooccuring_tracks_file) as file:
+            self.cooccurring_tracks = [[int(n) for n in line.split(',')] for line in file]
         if len(samples) == 0:
             raise (RuntimeError("Found 0 files in subfolders of: " + root + "\n"
                                                                             "Supported extensions are: " + ",".join(
@@ -167,34 +210,117 @@ class ImageFolderTrackDataset(data.Dataset):
         self.class_to_idx = class_to_idx
         self.samples = samples
         self.track_targets = [s[1] for s in samples]
-        self.gt_targets = [s[2] for s in samples]
+
+        track_idx_to_sample_idx = {}
+        for track_idx in np.unique(self.track_targets):
+            track_idx_to_sample_idx[track_idx] = np.where(self.track_targets == track_idx)[0]
+
+        self.track_idx_to_sample_idx = track_idx_to_sample_idx
 
         self.transform = transform
         self.target_transform = target_transform
 
-    def _make_dataset(self, dir, class_to_idx, extensions):
-        images = []
+    def __getitem__(self, index):
+        """
+        Args:
+            index (int): Index
+
+        Returns:
+            tuple: (sample, target) where target is class_index of the target class.
+        """
+        path, track_target = self.samples[index]
+        sample = default_loader(path)
+        if self.transform is not None:
+            sample = self.transform(sample)
+        if self.target_transform is not None:
+            track_target = self.target_transform(track_target)
+
+        return sample, track_target
+
+    def __len__(self):
+        return len(self.samples)
+
+    def __repr__(self):
+        fmt_str = 'Dataset ' + self.__class__.__name__ + '\n'
+        fmt_str += '    Number of datapoints: {}\n'.format(self.__len__())
+        fmt_str += '    Root Location: {}\n'.format(self.root)
+        tmp = '    Transforms (if any): '
+        fmt_str += '{0}{1}\n'.format(tmp, self.transform.__repr__().replace('\n', '\n' + ' ' * len(tmp)))
+        tmp = '    Target Transforms (if any): '
+        fmt_str += '{0}{1}'.format(tmp, self.target_transform.__repr__().replace('\n', '\n' + ' ' * len(tmp)))
+        return fmt_str
+
+
+class ImageFolderTrackDataset_with_Labels(data.Dataset):
+    """A generic data loader where the samples are arranged in this way: ::
+
+            root/class_x/xxx.ext
+            root/class_x/xxy.ext
+            root/class_x/xxz.ext
+
+            root/class_y/123.ext
+            root/class_y/nsdf3.ext
+            root/class_y/asd932_.ext
+
+        Args:
+            root (string): Root directory path.
+            transform (callable, optional): A function/transform that takes in
+                a sample and returns a transformed version.
+                E.g, ``transforms.RandomCrop`` for images.
+            target_transform (callable, optional): A function/transform that takes
+                in the target and transforms it.
+
+         Attributes:
+            classes (list): List of the class names.
+            class_to_idx (dict): Dict with items (class_name, class_index).
+            samples (list): List of (sample path, class_index) tuples
+            targets (list): The class_index value for each image in the dataset
+        """
+
+    def __init__(self, root,
+                 transform=None,
+                 target_transform=None):
+        classes, class_to_idx = self._find_classes(root)
+        samples = _make_dataset(root, class_to_idx, IMG_EXTENSIONS)
+        cooccuring_tracks_file = os.path.join(root, "cooccurring_tracks.txt")
+        with open(cooccuring_tracks_file) as file:
+            self.cooccurring_tracks = [[int(n) for n in line.split(',')] for line in file]
+        if len(samples) == 0:
+            raise (RuntimeError("Found 0 files in subfolders of: " + root + "\n"
+                                                                            "Supported extensions are: " + ",".join(
+                IMG_EXTENSIONS)))
+
+        self.root = root
+
+        self.classes = classes
+        self.class_to_idx = class_to_idx
+        self.samples = samples
+        self.track_targets = [s[1] for s in samples]
+        # self.gt_targets = [s[2] for s in samples]
+
+        track_to_gt_list = utils.read_file_to_list(os.path.join(root, 'track_gt.txt'))
+        track_to_gt_dict = utils.list_to_dict(track_to_gt_list)
+
         gtclass_to_idx = {}
         gt_idx = 0
-        dir = os.path.expanduser(dir)
-        for target in sorted(class_to_idx.keys()):
-            d = os.path.join(dir, target)
-            if not os.path.isdir(d):
-                continue
+        gt_targets = []
+        for track_id in self.track_targets:
+            if track_to_gt_dict[track_id] not in gtclass_to_idx.keys():
+                gtclass_to_idx[track_to_gt_dict[track_id]] = gt_idx
+                gt_idx += 1
+            label = gtclass_to_idx[track_to_gt_dict[track_id]]
+            gt_targets.append(label)
 
-            for root, _, fnames in sorted(os.walk(d)):
-                for fname in sorted(fnames):
-                    if has_file_allowed_extension(fname, extensions):
-                        path = os.path.join(root, fname)
-                        track_name, gtlabel_name = target.split('_')
-                        track_idx = int(''.join(filter(str.isdigit, track_name)))
-                        if gtlabel_name not in gtclass_to_idx.keys():
-                            gtclass_to_idx[gtlabel_name] = gt_idx
-                            gt_idx += 1
-                        item = (path, track_idx, gtclass_to_idx[gtlabel_name])
-                        images.append(item)
+        self.gt_targets = gt_targets
 
-        return images
+        track_idx_to_sample_idx = {}
+        for track_idx in np.unique(self.track_targets):
+            track_idx_to_sample_idx[track_idx] = np.where(self.track_targets == track_idx)[0]
+
+        self.track_idx_to_sample_idx = track_idx_to_sample_idx
+
+        self.transform = transform
+        self.target_transform = target_transform
 
     def _find_classes(self, dir):
         """
@@ -229,7 +355,6 @@ class ImageFolderTrackDataset(data.Dataset):
             sample = self.transform(sample)
         if self.target_transform is not None:
             track_target = self.target_transform(track_target)
-        if self.target_transform is not None:
             gt_target = self.target_transform(gt_target)
 
         return sample, track_target, gt_target
@@ -247,36 +372,6 @@ class ImageFolderTrackDataset(data.Dataset):
         fmt_str += '{0}{1}'.format(tmp, self.target_transform.__repr__().replace('\n', '\n' + ' ' * len(tmp)))
         return fmt_str
 
-class TrackDataset(data.Dataset):
-    def __init__(self,
-                 pkl_file,
-                 transform=None):
-
-        self.pkl_file = pkl_file
-        self.transform = transform
-
-        # Read pickle file
-        file2 = open(pkl_file, 'rb')
-        data = pickle.load(file2)
-        file2.close()
-
-        self.cropped_image_list = data['cropped_images']
-        self.track_id = data['track_id']
-        self.cooccurring_tracks = data['cooccurring_tracks']
-        self.track_to_bbxidx = data['track_to_bbxidx']
-
-    def __getitem__(self, index):
-        sample = self.cropped_image_list[index]
-        target = self.track_id[index]
-
-        if self.transform:
-            sample = self.transform(sample)
-
-        return sample, target
-
-    def __len__(self):
-        return len(self.cropped_image_list)
-
 
 class PairsDataset(data.Dataset):
 
@@ -289,7 +384,7 @@ class PairsDataset(data.Dataset):
         self.pair_file = pair_file
         self.transform = transform
 
-        self.pairs, self.issame = utils.Get_Pairs(pair_file, data_source)
+        self.pairs, self.issame = utils.get_pairs(pair_file, data_source)
 
         self.preloaded = False
         if preload:
@@ -503,77 +598,6 @@ class DatasetS2V(data.Dataset):
             sample = self.images[path]
         else:
             sample = default_loader(path)
-
-        if self.transform:
-            sample = self.transform(sample)
-
-        return sample, label
-
-
-class DatasetS2V_from_subject(data.Dataset):
-
-    def __init__(self,
-                 still_dir,
-                 video_dir,
-                 video_list,
-                 subject_list,
-                 transform: transforms,
-                 max_samples_per_subject=10,
-                 video_only=False):
-
-        self.transform = transform
-
-        image_path_list = []
-        labels_list = []
-        samples = []
-
-        for video_view in video_list:
-            for subject in subject_list:
-
-                subject_video_path = os.path.join(video_dir, video_view, subject)
-                video_image_paths = utils.get_image_paths(subject_video_path)
-                if len(video_image_paths) > max_samples_per_subject:
-                    video_image_paths = video_image_paths[0:max_samples_per_subject]
-
-                label = subject + '_' + video_view
-                labels_list += [label] * len(video_image_paths)
-
-                if not video_only:
-                    label = subject + '_still'
-                    if label not in labels_list: # No need to add still image a second time.
-                        video_image_paths.append(os.path.join(still_dir, subject + '_0000.JPG'))
-                        labels_list.append(label)
-
-                image_path_list += video_image_paths
-
-        classes = utils.unique(labels_list)
-        class_to_idx = {key: tgt for (tgt, key) in enumerate(classes)}
-
-        for i, image_path in enumerate(image_path_list):
-
-            item = (image_path, class_to_idx[labels_list[i]])
-            samples.append(item)
-
-        self.classes = classes
-        self.class_to_idx = class_to_idx
-        self.samples = samples
-        self.targets = [s[1] for s in samples]
-
-    def __len__(self):
-        return len(self.samples)
-
-    def __getitem__(self, idx):
-
-        """
-                Args:
-                    index (int): Index
-
-                Returns:
-                    tuple: (sample, target) where target is class_index of the target class.
-                """
-
-        path, label = self.samples[idx]
-        sample = default_loader(path)
 
         if self.transform:
             sample = self.transform(sample)

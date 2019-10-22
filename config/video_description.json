@@ -1,8 +1,12 @@
 {
   "name": "config",
   "version": "1.0.0",
-  "experiment": "da_bbt",
+  "debug": true,
+
   "miner": "dualtriplet",
+
+  "train_dataset": "movie",
+  "evaluation_datasets": ["lfw", "bbt"],
 
   "dataset": {
 
@@ -14,7 +18,7 @@
 
     "lfw": {
       "test_dir": "/export/livia/data/lemoineh/lfw/lfw_mtcnnpy_160",
-      "pairs_file": "dataset_utils/pair_files/new_lfw_pairs.txt"
+      "pairs_file": "dataset_utils/pair_files/lfw_pairs.txt"
     },
 
     "coxs2v": {
@@ -32,11 +36,19 @@
     },
 
     "bbt": {
+      "dataset_path": "/export/livia/data/lemoineh/BBT/s01e01",
       "movie_path": "/export/livia/data/lemoineh/BBT/bbts01e01.mkv",
       "annotation_path": "/export/livia/data/lemoineh/CVPR2013_PersonID_data/bbt_s01e01_facetracks.mat",
-      "pkl_dataset_path": "/export/livia/data/lemoineh/torch_facetripletloss/roi/labeled_roi.pkl",
       "video_track_path": "/export/livia/data/lemoineh/BBT/ep01",
-      "num_frame": 1000
+      "num_frame": 500
+    },
+
+    "movie": {
+      "dataset_path2": "/export/livia/home/vision/lemoineh/data/BBT/test1",
+      "dataset_path": "/export/livia/data/lemoineh/BBT/s01e01",
+      "movie_path2": "/export/livia/data/lemoineh/video/output2.mp4",
+      "movie_path": "/export/livia/data/lemoineh/BBT/bbts01e01.mkv",
+      "num_frame": 500
     },
 
     "cross_validation": {
@@ -54,9 +66,10 @@
 
   "model": {
     "model_arch": "resnet50",
-    "pretrained_imagenet": true,
+    "pretrained_imagenet": false,
     "checkpoint": true,
-    "checkpoint_path": "/export/livia/data/lemoineh/torch_facetripletloss/models/TripletLossPlots6/model_219.pth",
+    "checkpoint_path2": "/export/livia/data/lemoineh/torch_facetripletloss/models/TripletLossPlots6/model_219.pth",
+    "checkpoint_path": "/export/livia/data/lemoineh/torch_facetripletloss/models/train_vggface2_m0.2_01/model_500.pth",
     "embedding_size": 128
   },
 
@@ -64,7 +77,7 @@
     "margin": 0.2,
     "lamda": [1.0, 1.0],
 
-    "n_epochs": 100,
+    "n_epochs": 2,
     "image_size": 160,
     "images_per_person": 5,
     "people_per_batch": 20,
@@ -77,6 +90,7 @@
     "moving_average_decay": 0.9999,
     "batch_size": 32,
     "deadzone_ratio": 0.1,
+    "tracker_max_age": 10,
 
     "val_far": 1e-3,
 
@@ -86,7 +100,7 @@
   },
 
   "visdom": {
-    "environment_name": "BBTfinetune",
+    "server": "turing.livia.etsmtl.ca",
     "port": 8097,
     "log_interval": 10
   }

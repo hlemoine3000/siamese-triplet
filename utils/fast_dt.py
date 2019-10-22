@@ -116,7 +116,6 @@ class Sort(object):
                 pos = self.trackers[t].get_state(frame)
                 trks.append([pos[0], pos[1], pos[2], pos[3], 0])
                 if (np.any(np.isnan(pos))):
-                    # print('tracker deleted1')
                     to_del.append(t)
             trks = np.ma.compress_rows(np.ma.masked_invalid(trks))
         for t in reversed(to_del):
@@ -139,7 +138,6 @@ class Sort(object):
         # delete lost trackers
         for t, trk in reversed(list(enumerate(self.trackers))):
             if (t in unmatched_trks) and (self.trackers[t].time_since_update > self.max_age):
-                # print('tracker deleted2')
                 self.trackers.pop(t)
 
     def track(self, frame):
@@ -154,7 +152,6 @@ class Sort(object):
             ret.append(np.concatenate((d, [trk.id])))
             # remove dead track
             if (trk.time_since_update > self.max_age):
-                # print('tracker deleted3')
                 self.trackers.pop(i)
 
         if (len(ret) > 0):

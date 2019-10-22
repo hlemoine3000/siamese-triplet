@@ -1,5 +1,9 @@
+
 from itertools import combinations
 import numpy as np
+from sklearn.cluster import KMeans
+from sklearn.mixture import GaussianMixture
+
 import torch
 
 import utils
@@ -216,6 +220,15 @@ class FunctionSemihardTripletSelector():
         return torch.LongTensor(triplets)
 
 
+def gaussian(x, mu, sig):
+    return np.exp(-np.power(x - mu, 2.) / (2 * np.power(sig, 2.)))
+
+def solve(m1,m2,std1,std2):
+    a = 1/(2*std1**2) - 1/(2*std2**2)
+    b = m2/(std2**2) - m1/(std1**2)
+    c = m1**2 /(2*std1**2) - m2**2 / (2*std2**2) - np.log(std2/std1)
+    return np.roots([a,b,c])
+
 class FunctionPseudoTripletSelector():
 
     def __init__(self, margin, plotter, deadzone_ratio=0.1, cpu=False, name='tgt'):
@@ -223,6 +236,7 @@ class FunctionPseudoTripletSelector():
         self.margin = margin
         self.deadzone_ratio = deadzone_ratio
         self.name = name
+        self.step = 0
 
         self.plotter = plotter
         self.data_dict = utils.AverageData_Dict()
@@ -251,8 +265,15 @@ class FunctionPseudoTripletSelector():
         self.plotter.plot('distance', 'epoch', '{}_negative'.format(self.name), 'Pairwise mean distance',
                           epoch, self.data_dict['neg_center'].last_avg())
 
+        self.plotter.plot('distance', 'epoch', 'id_thr', 'Pairwise mean distance',
+                          epoch, self.data_dict['id_thr'].last_avg())
+        self.plotter.plot('distance', 'epoch', 'pos_thr', 'Pairwise mean distance',
+                          epoch, self.data_dict['pos_thr'].last_avg())
+        self.plotter.plot('distance', 'epoch', 'neg_thr', 'Pairwise mean distance',
+                          epoch, self.data_dict['neg_thr'].last_avg())
+
     @torch.no_grad()
-    def get_triplets(self, embeddings, labels, identification_threshold):
+    def get_triplets(self, embeddings, labels, _gmixture: GaussianMixture):
         if self.cpu:
             embeddings = embeddings.cpu()
 
@@ -263,20 +284,55 @@ class FunctionPseudoTripletSelector():
         # Generate pseudo triplets #
         ############################
 
-        # flatten_tgt_distance_matrix = np_tgt_distance_matrix.flatten()
-        #
-        # kmeans = KMeans(n_clusters=2, random_state=0).fit(np.expand_dims(flatten_tgt_distance_matrix, axis=1))
+        # Extract values above the diagonal
+        distances = np_distance_matrix[np.triu_indices(len(np_distance_matrix), k = 1)]
+
+        # kmeans = KMeans(n_clusters=2, random_state=0).fit(np.expand_dims(distances, axis=1))
         #
         # pos_center = min(kmeans.cluster_centers_[0][0], kmeans.cluster_centers_[1][0])
         # neg_center = max(kmeans.cluster_centers_[0][0], kmeans.cluster_centers_[1][0])
-        # identification_treshold = pos_center + neg_center / 2.0
+        # id_thr = pos_center + neg_center / 2.0
+        # self.data_dict['id_thr'].append(id_thr)
 
         # pos_center, neg_center = get_centers(np_distance_matrix, labels)
         # identification_threshold = (pos_center + neg_center) / 2.0
+        # _gmixture.set_params(warm_start=True)
+
+        gmixture = _gmixture.fit(np.expand_dims(distances, axis=1))
+
+        # Visualisation debug
+        #################################################
+        # step = 0.05
+        # max_distance = max(distances) + step
+        # bins = np.arange(0.0, max_distance, step)
+        # hist, _ = np.histogram(distances, bins=bins)
+        #
+        # self.plotter.stem_plot('gaussian_debug', 'Number of Samples', 'Distances Test {}'.format(self.step),
+        #                       ['pos'], bins[1:], hist)
+        #
+        # Y = np.linspace(0, max(distances), 200)
+        # funtion1 = gaussian(Y ,gmixture.means_[0][0], np.sqrt(gmixture.covariances_[0][0]))
+        # funtion2 = gaussian(Y ,gmixture.means_[1][0], np.sqrt(gmixture.covariances_[1][0]))
+        # X = np.column_stack((Y, Y))
+        # Y = np.column_stack((funtion1, funtion2))
+        # self.plotter.plot_curve('distance', 'epoch', ['g1', 'g2'], 'Gaussian update', X, Y)
+        # self.step += 1
+        #################################################
+
+        id_thr = solve(gmixture.means_[0][0].item(),
+                     gmixture.means_[1][0].item(),
+                     np.sqrt(gmixture.covariances_[0][0].item()),
+                     np.sqrt(gmixture.covariances_[1][0].item()))
+        low_mean = min(gmixture.means_[0][0].item(), gmixture.means_[1][0].item())
+        high_mean = max(gmixture.means_[0][0].item(), gmixture.means_[1][0].item())
+        id_thr = id_thr[np.where(np.logical_and(id_thr>=low_mean, id_thr<=high_mean))][0]
+        self.data_dict['id_thr'].append(id_thr)
 
         deadzone_margin = self.deadzone_ratio * self.margin
-        positive_threshold = identification_threshold - deadzone_margin
-        negative_threshold = identification_threshold + deadzone_margin
+        positive_threshold = id_thr - deadzone_margin
+        negative_threshold = id_thr + deadzone_margin
+        self.data_dict['pos_thr'].append(positive_threshold)
+        self.data_dict['neg_thr'].append(negative_threshold)
 
         triplets = []
         easy_triplet = [0,0,0]
@@ -351,6 +407,8 @@ class FunctionDualTripletSelector3(TripletSelector):
         self.source_selector = FunctionSemihardTripletSelector(margin, plotter)
         self.target_selector = FunctionPseudoTripletSelector(margin, plotter, deadzone_ratio)
 
+        self.gmixture = None
+
         self.plotter = plotter
         self.data_dict = utils.AverageData_Dict()
 
@@ -358,8 +416,6 @@ class FunctionDualTripletSelector3(TripletSelector):
         # Mining stats
         self.plotter.plot('dualtriplet number', 'epoch', 'num dualtriplet', 'Dual Triplets Mining',
                      epoch, self.data_dict['num_dualtriplets'].last_avg())
-        self.plotter.plot('distance', 'epoch', 'id_thr', 'Pairwise mean distance',
-                          epoch, self.data_dict['identification_threshold'].last_avg())
 
         self.source_selector.plot(epoch)
         self.target_selector.plot(epoch)
@@ -367,10 +423,33 @@ class FunctionDualTripletSelector3(TripletSelector):
     @torch.no_grad()
     def get_dualtriplet(self, source_embeddings, source_labels, target_embeddings, target_labels):
 
-        identification_threshold = miner_utils.get_threshold(target_embeddings, target_labels)
-        self.data_dict['identification_threshold'].append(identification_threshold)
+        # identification_threshold = miner_utils.get_threshold(target_embeddings, target_labels)
 
-        target_triplets = self.target_selector.get_triplets(target_embeddings, target_labels, identification_threshold)
+        # issame_matrix = np.zeros((len(source_labels), len(source_labels)), dtype=np.int)
+        # for x in range(len(source_labels)):
+        #     for y in range(len(source_labels)):
+        #         if source_labels[x] == source_labels[y]:
+        #             issame_matrix[x][y] = 1
+        #
+        # distance_matrix = ml_utils.pdist(source_embeddings)
+        # np_distance_matrix = distance_matrix.cpu().detach().numpy()
+        # distances = np_distance_matrix[np.triu_indices(len(np_distance_matrix), k=1)]
+        # issame = issame_matrix[np.triu_indices(len(np_distance_matrix), k=1)]
+        # gmixture = GaussianMixture(n_components=2).fit(np.expand_dims(distances, axis=1),
+        #                                                y=np.expand_dims(issame, axis=1))
+
+        # Visualisation debug
+        ################################################
+        # step = 0.05
+        # max_distance = max(distances) + step
+        # bins = np.arange(0.0, max_distance, step)
+        # hist, _ = np.histogram(distances, bins=bins)
+        #
+        # self.plotter.stem_plot('gaussian_debug', 'Number of Samples', 'Distances Test',
+        #                        ['pos'], bins[1:], hist)
+        #################################################
+
+        target_triplets = self.target_selector.get_triplets(target_embeddings, target_labels, self.gmixture)
         source_triplets = self.source_selector.get_triplets(source_embeddings, source_labels, min_triplets=len(target_triplets))
 
         num_dualtriplet = min(source_triplets.size(0), target_triplets.size(0))
@@ -425,215 +504,3 @@ class FunctionDualTripletSupervisedSelector(TripletSelector):
         self.data_dict['num_dualtriplets'].append(dual_triplets.shape[0])
 
         return dual_triplets
-
-
-# class FunctionDualTripletSelector2():
-#     """
-#     For each positive pair, takes the hardest negative sample (with the greatest triplet loss value) to create a triplet
-#     Margin should match the margin used in triplet loss.
-#     negative_selection_fn should take array of loss_values for a given anchor-positive pair and all negative samples
-#     and return a negative index for that pair
-#     Target samples are chosen ramdomly
-#     """
-#
-#     def __init__(self, margin, max_clusters, plotter, deadzone_ratio=0.1, cpu=False):
-#         self.cpu = cpu
-#         self.margin = margin
-#         self.max_clusters = max_clusters
-#         self.deadzone_ratio = deadzone_ratio
-#
-#         self.source_selector = FunctionSemihardTripletSelector(margin, plotter)
-#
-#         self.plotter = plotter
-#         self.data_dict = utils.AverageData_Dict()
-#
-#     def plot(self, epoch):
-#         # Mining stats
-#         self.plotter.plot('dualtriplet number', 'epoch', 'num dualtriplet', 'Dual Triplets Mining',
-#                      epoch, self.data_dict['num_dualtriplets'].last_avg())
-#         self.plotter.plot('dualtriplet number', 'epoch', 'num srctriplet', 'Dual Triplets Mining',
-#                      epoch, self.data_dict['num_srctriplets'].last_avg())
-#         self.plotter.plot('dualtriplet number', 'epoch', 'num tgttriplet', 'Dual Triplets Mining',
-#                      epoch, self.data_dict['num_tgttriplets'].last_avg())
-#
-#
-#         # self.plotter.plot('margin', 'epoch', 'margin', 'Deadzone Margin',
-#         #              epoch, self.data_dict['deadzone_margin'].last_avg())
-#
-#         # Plot pseudo labeling performannde
-#         self.plotter.plot('accuracy', 'epoch', 'pseudo-labeling', 'Pseudo-Labeling Accuracy',
-#                      epoch, self.data_dict['pseudo_labeling_accuracy'].last_avg())
-#         self.plotter.plot('accuracy', 'epoch', 'triplet_acc', 'Pseudo-Labeling Accuracy',
-#                           epoch, self.data_dict['triplet_selected_acc'].last_avg())
-#         self.plotter.plot('accuracy', 'epoch', 'triplet_tpr', 'Pseudo-Labeling Accuracy',
-#                      epoch, self.data_dict['triplet_selected_tpr'].last_avg())
-#         self.plotter.plot('accuracy', 'epoch', 'triplet_fpr', 'Pseudo-Labeling Accuracy',
-#                           epoch, self.data_dict['triplet_selected_fpr'].last_avg())
-#
-#         # Plot pairwise distances
-#         self.plotter.plot('distance', 'epoch', 'id_thr', 'Pairwise mean distance',
-#                      epoch, self.data_dict['identification_threshold'].last_avg())
-#         self.plotter.plot('distance', 'epoch', 'pos_thr', 'Pairwise mean distance',
-#                      epoch, self.data_dict['positive_threshold'].last_avg())
-#         self.plotter.plot('distance', 'epoch', 'neg_thr', 'Pairwise mean distance',
-#                      epoch, self.data_dict['negative_threshold'].last_avg())
-#         self.plotter.plot('distance', 'epoch', 'src_positive', 'Pairwise mean distance',
-#                           epoch, self.data_dict['source_pos_center'].last_avg())
-#         self.plotter.plot('distance', 'epoch', 'src_negative', 'Pairwise mean distance',
-#                           epoch, self.data_dict['source_neg_center'].last_avg())
-#         self.plotter.plot('distance', 'epoch', 'tgt_positive', 'Pairwise mean distance',
-#                           epoch, self.data_dict['target_pos_center'].last_avg())
-#         self.plotter.plot('distance', 'epoch', 'tgt_negative', 'Pairwise mean distance',
-#                           epoch, self.data_dict['target_neg_center'].last_avg())
-#
-#     @torch.no_grad()
-#     def get_dualtriplet(self, source_embeddings, source_labels, target_embeddings, target_labels):
-#         if self.cpu:
-#             source_embeddings = source_embeddings.cpu()
-#             target_embeddings = target_embeddings.cpu()
-#
-#         concat_embeddings = torch.cat((source_embeddings, target_embeddings), 0)
-#         distance_matrix = ml_utils.pdist(concat_embeddings)
-#         dist_split_idx = source_labels.size(0)
-#
-#         src_distance_matrix = distance_matrix[:dist_split_idx, :dist_split_idx]
-#         tgt_distance_matrix = distance_matrix[dist_split_idx:, dist_split_idx:]
-#         np_tgt_distance_matrix = tgt_distance_matrix.cpu().detach().numpy()
-#
-#         ############################
-#         # Generate source triplets #
-#         ############################
-#
-#
-#
-#         source_triplets = []
-#         easy_source_triplets = []
-#         for label in set(source_labels):
-#             label_mask = (source_labels == label)
-#             label_indices = np.where(label_mask)[0]
-#             if len(label_indices) < 2:
-#                 continue
-#             negative_indices = np.where(np.logical_not(label_mask))[0]
-#             anchor_positives = list(combinations(label_indices, 2))  # All anchor-positive pairs
-#             anchor_positives = np.array(anchor_positives)
-#
-#             ap_distances = src_distance_matrix[anchor_positives[:, 0], anchor_positives[:, 1]]
-#             for anchor_positive, ap_distance in zip(anchor_positives, ap_distances):
-#
-#                 negative_distance_matrix = src_distance_matrix[
-#                     torch.LongTensor(np.array([anchor_positive[0]])), torch.LongTensor(negative_indices)]
-#
-#                 # loss = F.relu(distance_positive - distance_negative + self.margin)
-#                 loss_values = (ap_distance - negative_distance_matrix + self.margin)
-#
-#                 loss_values = loss_values.data.cpu().numpy()
-#
-#                 # hard_negative = np.random.choice(negative_indices)
-#                 hard_negative = semihard_negative(loss_values, self.margin)
-#
-#                 if hard_negative is not None:
-#
-#                     hard_negative = negative_indices[hard_negative]
-#                     source_triplets.append([anchor_positive[0], anchor_positive[1], hard_negative])
-#                 else:
-#                     hard_negative = np.random.choice(negative_indices)
-#                     easy_source_triplets.append([anchor_positive[0], anchor_positive[1], hard_negative])
-#
-#         src_pos_center, src_neg_center = get_centers(src_distance_matrix.cpu().detach().numpy(), source_labels)
-#         # identification_threshold = (src_pos_center + src_neg_center) / 2.0
-#
-#         self.data_dict['source_pos_center'].append(src_pos_center)
-#         self.data_dict['source_neg_center'].append(src_neg_center)
-#
-#         ############################
-#         # Generate target triplets #
-#         ############################
-#
-#
-#         # flatten_tgt_distance_matrix = np_tgt_distance_matrix.flatten()
-#         #
-#         # kmeans = KMeans(n_clusters=2, random_state=0).fit(np.expand_dims(flatten_tgt_distance_matrix, axis=1))
-#         #
-#         # pos_center = min(kmeans.cluster_centers_[0][0], kmeans.cluster_centers_[1][0])
-#         # neg_center = max(kmeans.cluster_centers_[0][0], kmeans.cluster_centers_[1][0])
-#         # identification_treshold = pos_center + neg_center / 2.0
-#
-#         tgt_pos_center, tgt_neg_center = get_centers(np_tgt_distance_matrix, target_labels)
-#         identification_threshold = (tgt_pos_center + tgt_neg_center) / 2.0
-#
-#         deadzone_margin = self.deadzone_ratio * self.margin
-#         positive_threshold = identification_threshold - deadzone_margin
-#         negative_threshold = identification_threshold + deadzone_margin
-#
-#         self.data_dict['identification_threshold'].append(identification_threshold)
-#         self.data_dict['positive_threshold'].append(positive_threshold)
-#         self.data_dict['negative_threshold'].append(negative_threshold)
-#
-#         target_triplets = []
-#
-#         for target_idx in range(tgt_distance_matrix.shape[0]):
-#             label_indices = np.where(np_tgt_distance_matrix[target_idx] <= positive_threshold)[0]
-#             negative_indices = np.where(np_tgt_distance_matrix[target_idx] >= negative_threshold)[0]
-#             if len(label_indices) < 2:
-#                 continue
-#
-#             anchor_positives = []
-#             for label_indice in label_indices:
-#                 if label_indice > target_idx:
-#                     anchor_positives.append([target_idx, label_indice])
-#
-#             if anchor_positives:
-#                 anchor_positives = np.array(anchor_positives)
-#                 ap_distances = tgt_distance_matrix[anchor_positives[:, 0], anchor_positives[:, 1]]
-#                 for anchor_positive, ap_distance in zip(anchor_positives, ap_distances):
-#                     negative_distance_matrix = tgt_distance_matrix[
-#                         torch.LongTensor(np.array([anchor_positive[0]])), torch.LongTensor(negative_indices)]
-#
-#                     # loss = F.relu(distance_positive - distance_negative + self.margin)
-#                     loss_values = (ap_distance - negative_distance_matrix + self.margin)
-#
-#                     loss_values = loss_values.data.cpu().numpy()
-#
-#                     hard_negative = semihard_negative(loss_values, self.margin)
-#                     # hard_negative = np.random.choice(negative_indices)
-#
-#                     if hard_negative is not None:
-#                         hard_negative = negative_indices[hard_negative]
-#                         target_triplets.append([anchor_positive[0], anchor_positive[1], hard_negative])
-#
-#         pseudo_labeling_accuracy, _, _ = evaluate_pseudo_labeling(np_tgt_distance_matrix,
-#                                                                   target_labels,
-#                                                                   positive_threshold,
-#                                                                   negative_threshold)
-#         triplet_selected_acc, triplet_selected_tpr, triplet_selected_fpr = evaluate_triplet(target_triplets,
-#                                                                                             target_labels)
-#
-#         self.data_dict['target_pos_center'].append(tgt_pos_center)
-#         self.data_dict['target_neg_center'].append(tgt_neg_center)
-#
-#         self.data_dict['pseudo_labeling_accuracy'].append(pseudo_labeling_accuracy)
-#         self.data_dict['triplet_selected_acc'].append(triplet_selected_acc)
-#         self.data_dict['triplet_selected_tpr'].append(triplet_selected_tpr)
-#         self.data_dict['triplet_selected_fpr'].append(triplet_selected_fpr)
-#
-#         # Fuse and balance triplets
-#         dual_triplets = []
-#         if len(source_triplets) < len(target_triplets):
-#             missing_triplets = len(target_triplets) - len(source_triplets)
-#             source_triplets += easy_source_triplets[:missing_triplets]
-#
-#         for idx in range(len(target_triplets)):
-#             dual_triplets.append(source_triplets[idx] + target_triplets[idx])
-#         # Give at least one sample
-#         if len(dual_triplets) == 0:
-#             dual_triplets.append([0, 0, 0, 0, 0, 0])
-#
-#         dual_triplets = np.array(dual_triplets)
-#
-#         # Collect data
-#         self.data_dict['num_dualtriplets'].append(len(dual_triplets))
-#         self.data_dict['num_srctriplets'].append(len(source_triplets))
-#         self.data_dict['num_tgttriplets'].append(len(target_triplets))
-#         self.data_dict['deadzone_margin'].append(self.deadzone_ratio)
-#
-#         return torch.LongTensor(dual_triplets)

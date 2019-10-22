@@ -22,7 +22,6 @@ from utils.visualization import draw_bounding_box_on_image_array
 from ml_utils import ml_utils, clustering
 import models
 from dataset_utils.dataset import NumpyDataset
-from vis_embeddings import TSNE_Visualizer
 
 color = {0: '#000000',
          1: '#FF0000',
@@ -250,8 +249,7 @@ if __name__ == '__main__':
                            transform=data_transform)
     dataloader = torch.utils.data.DataLoader(dataset,
                                              num_workers=2,
-                                             batch_size=100,
-                                             pin_memory=True)
+                                             batch_size=100)
 
     print('Extracting features.')
     model = model.to(device)

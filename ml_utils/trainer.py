@@ -8,7 +8,7 @@ from torch.optim.lr_scheduler import _LRScheduler
 from torch.utils.data import DataLoader
 
 import utils
-from ml_utils import ml_utils
+from ml_utils import ml_utils, clustering
 
 
 class Triplet_Trainer(object):
@@ -51,7 +51,7 @@ class Triplet_Trainer(object):
         # Training
         source_anchor_images = []
         source_positive_images = []
-        source_negatives_images = []
+        source_negative_images = []
 
         training_step = 0
         tbar = tqdm.tqdm(train_loader)
@@ -68,37 +68,46 @@ class Triplet_Trainer(object):
 
             source_anchor_images.append(batch[triplets_indexes[:, 0]])
             source_positive_images.append(batch[triplets_indexes[:, 1]])
-            source_negatives_images.append(batch[triplets_indexes[:, 2]])
+            source_negative_images.append(batch[triplets_indexes[:, 2]])
 
             if num_triplets >= self.batch_size:
-                source_anchor_images = torch.cat(source_anchor_images, 0)[:self.batch_size]
-                source_positive_images = torch.cat(source_positive_images, 0)[:self.batch_size]
-                source_negatives_images = torch.cat(source_negatives_images, 0)[:self.batch_size]
 
-                self.model.train()
-                image_tensor = torch.cat([source_anchor_images, source_positive_images, source_negatives_images], 0)
-                embeddings = self.model(image_tensor)
-                embeddings_list = torch.chunk(embeddings, 3, 0)
+                source_anchor_images = torch.cat(source_anchor_images, 0)
+                source_positive_images = torch.cat(source_positive_images, 0)
+                source_negative_images = torch.cat(source_negative_images, 0)
 
-                loss = self.loss(*embeddings_list)
                 self.optimizer.zero_grad()
-                loss.backward()
+                nb_chunks = num_triplets // self.batch_size
+                for chunk_idx in range(nb_chunks):
+
+                    lower_idx = chunk_idx * self.batch_size
+                    higher_idx = chunk_idx * self.batch_size + self.batch_size
+
+                    self.model.train()
+                    image_tensor = torch.cat([source_anchor_images[lower_idx:higher_idx],
+                                              source_positive_images[lower_idx:higher_idx],
+                                              source_negative_images[lower_idx:higher_idx]], 0)
+                    embeddings = self.model(image_tensor)
+                    embeddings_list = torch.chunk(embeddings, 3, 0)
+
+                    loss = self.loss(*embeddings_list)# / nb_chunks
+                    loss.backward()
+
+                    ap_distances = torch.norm(embeddings_list[0] - embeddings_list[1], p=2, dim=1)
+                    an_distances = torch.norm(embeddings_list[0] - embeddings_list[2], p=2, dim=1)
+
+                    data_dict['loss'].append(loss.item())
+                    data_dict['dap'].append(ap_distances.mean().item())
+                    data_dict['dan'].append(an_distances.mean().item())
+
+                    training_step += 1
+                    # tbar.set_postfix({'training steps': training_step})
+
                 self.optimizer.step()
-
-                ap_distances = torch.norm(embeddings_list[0] - embeddings_list[1], p=2, dim=1)
-                an_distances = torch.norm(embeddings_list[0] - embeddings_list[2], p=2, dim=1)
-
-                data_dict['loss'].append(loss.item())
-                data_dict['dap'].append(ap_distances.mean().item())
-                data_dict['dan'].append(an_distances.mean().item())
-
                 num_triplets = 0
                 source_anchor_images = []
                 source_positive_images = []
-                source_negatives_images = []
-
-                training_step += 1
-                tbar.set_postfix({'training steps': training_step})
+                source_negative_images = []
 
         lr = ml_utils.get_lr(self.optimizer)
         self.scheduler.step()
@@ -116,86 +125,6 @@ class Triplet_Trainer(object):
                               epoch, data_dict['dap'].last_avg())
 
             self.miner.plot(epoch)
-
-
-# class Triplet_Trainer(object):
-#     def __init__(self,
-#                  model: nn.Module,
-#                  miner,
-#                  loss: _Loss,
-#                  optimizer: Optimizer,
-#                  scheduler: _LRScheduler,
-#                  device,
-#                  plotter: utils.VisdomPlotter,
-#                  margin: int,
-#                  embedding_size: int,
-#                  eval_function):
-#
-#         self.model = model
-#         self.miner = miner
-#         self.optimizer = optimizer
-#         self.scheduler = scheduler
-#         self.plotter = plotter
-#         self.margin = margin
-#         self.embedding_size = embedding_size
-#
-#         self.eval_function = eval_function
-#         self.device = device
-#
-#         self.step = 0
-#         self.loss = loss
-#
-#     def Train_Epoch(self,
-#                     train_loader: DataLoader):
-#
-#         self.model.train()
-#         train_losses = utils.AverageMeter()
-#         # train_ap_distances = utils.AverageMeter()
-#         # train_an_distances = utils.AverageMeter()
-#         num_train_triplets = utils.AverageMeter()
-#
-#         # Training
-#
-#         train_triplets = torch.LongTensor()
-#         tbar = tqdm.tqdm(train_loader)
-#         step = 0
-#         for i, (local_batch, local_labels) in enumerate(tbar):
-#             # Transfer to GPU
-#             local_batch = local_batch.to(self.device)
-#             embeddings = self.model.forward(local_batch)
-#
-#             triplets = self.miner.get_triplets(embeddings.cpu(), local_labels)
-#             train_triplets = torch.cat((train_triplets, triplets), 0)
-#
-#             if train_triplets.size(0) >= 200:
-#                 a = embeddings[triplets[:, 0]]
-#                 p = embeddings[triplets[:, 1]]
-#                 n = embeddings[triplets[:, 2]]
-#
-#                 loss = self.loss(a, p, n)
-#                 self.optimizer.zero_grad()
-#                 loss.backward()
-#                 self.optimizer.step()
-#
-#                 # ap_distances = torch.norm(a - p, p=2, dim=1)
-#                 # an_distances = torch.norm(a - n, p=2, dim=1)
-#
-#                 train_losses.append(loss.item())
-#                 # train_ap_distances.append(ap_distances.mean().item())
-#                 # train_an_distances.append(an_distances.mean().item())
-#                 num_train_triplets.append(train_triplets.size(0))
-#
-#                 train_triplets = torch.LongTensor()
-#                 step += 1
-#
-#         lr = ml_utils.get_lr(self.optimizer)
-#         self.scheduler.step()
-#
-#         data_dict = {'loss': train_losses.last_avg(),
-#                      'num_triplets': num_train_triplets.last_avg(),
-#                      'lr': lr}
-#
-#         return data_dict
 
 
 class Dualtriplet_Trainer(object):
@@ -242,6 +171,13 @@ class Dualtriplet_Trainer(object):
         target_anchor_images = []
         target_positive_images = []
         target_negatives_images = []
+
+        clustering.update_gaussian_mixture(self.miner.gmixture,
+                                           target_loader,
+                                           self.model,
+                                           self.device,
+                                           _plotter=self.plotter,
+                                           name='Target Gaussians')
 
         training_step = 0
         data_loader = zip(source_loader, target_loader)
@@ -308,6 +244,8 @@ class Dualtriplet_Trainer(object):
                 self.loss.plot(self.step)
                 self.miner.plot(self.step)
                 self.step += 1
+
+                continue
 
         lr = ml_utils.get_lr(self.optimizer)
         self.scheduler.step()

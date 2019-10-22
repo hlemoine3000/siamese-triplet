@@ -1,7 +1,7 @@
 
 import numpy as np
 
-from torch.utils.data import Dataset
+from torch.utils.data import Dataset, Sampler
 from torch.utils.data.sampler import BatchSampler
 from torchvision import datasets
 from random import sample
@@ -162,6 +162,7 @@ class Random_S2VBalancedBatchSampler(BatchSampler):
     def __len__(self):
         return min(self.num_batches, self.max_batches)
 
+
 class ImageFolder_BalancedBatchSampler(BatchSampler):
     r"""Samples elements sequentially, always in the same order.
 
@@ -171,6 +172,7 @@ class ImageFolder_BalancedBatchSampler(BatchSampler):
 
     def __init__(self, data_source: datasets.ImageFolder, num_classes: int, samples_per_class: int,
                  num_batches: int = None):
+        super().__init__()
         self.data_source = data_source
         self.num_classes = num_classes
         self.samples_per_class = samples_per_class
@@ -237,7 +239,7 @@ class BalancedBatchSampler(BatchSampler):
         return self.n_dataset // self.batch_size
 
 
-class TrackSampler(BatchSampler):
+class TrackSampler(Sampler):
     r"""Samples elements sequentially, always in the same order.
 
     Arguments:
@@ -245,8 +247,9 @@ class TrackSampler(BatchSampler):
     """
 
     def __init__(self,
-                 data_source: dataset.TrackDataset,
+                 data_source: dataset.ImageFolderTrackDataset_with_Labels,
                  samples_per_class: int):
+        super().__init__(data_source)
 
         self.data_source = data_source
         self.samples_per_class = samples_per_class
@@ -264,9 +267,9 @@ class TrackSampler(BatchSampler):
             batch = []
             coocurringtracks_idx = coocurringtracks_idxs_shuffled[i]
             for track in self.data_source.cooccurring_tracks[coocurringtracks_idx]:
-                samples_idx = self.data_source.track_to_bbxidx[track]
-                num_samples = min(self.samples_per_class, len(samples_idx))
-                chosen_samples_idx = np.random.choice(samples_idx, num_samples, replace=False)
+                samples_indexes = self.data_source.track_idx_to_sample_idx[track]
+                num_samples = min(self.samples_per_class, len(samples_indexes))
+                chosen_samples_idx = np.random.choice(samples_indexes, num_samples, replace=False)
                 batch.append(chosen_samples_idx)
             batches.append(np.concatenate(batch))
 

@@ -11,14 +11,10 @@ import torch.optim as optim
 from torch.optim import lr_scheduler
 
 from experiments import da_exp
-from ml_utils import trainer
-from ml_utils import losses
-from ml_utils import miners
+from ml_utils import trainer, losses, miners, clustering
+from dataset_utils import dataloaders
 import models
 import utils
-
-# try:
-#     from ape
 
 
 def parse_arguments(argv):
@@ -36,18 +32,27 @@ def path_leaf(path):
 
 
 def generate_experiment_name(config):
-    experiment_name = config.experiment
 
-    experiment_name += '_L'
-    if config.hyperparameters.lamda[0] > 0.0:
-        experiment_name += '1'
-    if config.hyperparameters.lamda[1] > 0.0:
-        experiment_name += '2'
+    if config.debug:
+        experiment_name = 'debug'
+    else:
+        experiment_name = 'da_{}_to_{}_L'.format(config.source_dataset, config.target_dataset)
+        if config.hyperparameters.lamda[0] > 0.0:
+            experiment_name += '1'
+        if config.hyperparameters.lamda[1] > 0.0:
+            experiment_name += '2'
 
-    experiment_name += '_m{}'.format(config.hyperparameters.margin)
+        experiment_name += '_m{}'.format(config.hyperparameters.margin)
 
-    if config.miner == 'supervised_dualtriplet':
-        experiment_name += '_supervised'
+        if config.miner == 'supervised_dualtriplet':
+            experiment_name += '_supervised'
+
+        if os.path.isdir(os.path.join(os.path.expanduser(config.output.output_dir), experiment_name)):
+            dir_count = 1
+            experiment_name += '_1'
+            while os.path.isdir(os.path.join(os.path.expanduser(config.output.output_dir), experiment_name)):
+                dir_count += 1
+                experiment_name = experiment_name[:-2] + '_{}'.format(dir_count)
 
     return experiment_name
 
@@ -60,18 +65,10 @@ def main(args):
         config = utils.AttrDict(json.load(json_config_file))
 
     # Set up output directory
-    if config.debug:
-        experiment_name = 'debug'
-    else:
-        experiment_name = generate_experiment_name(config)
-        if os.path.isdir(os.path.join(os.path.expanduser(config.output.output_dir), experiment_name)):
-            dir_count = 1
-            experiment_name += '_1'
-            while os.path.isdir(os.path.join(os.path.expanduser(config.output.output_dir), experiment_name)):
-                dir_count += 1
-                experiment_name = experiment_name[:-2] + '_{}'.format(dir_count)
+    experiment_name = generate_experiment_name(config)
     model_dir = os.path.join(os.path.expanduser(config.output.output_dir), experiment_name)
-    os.makedirs(model_dir)
+    if not os.path.exists(model_dir):
+        os.makedirs(model_dir)
     print('Model saved at {}'.format(model_dir))
 
     config_filename = path_leaf(args.config)
@@ -81,9 +78,13 @@ def main(args):
     use_cuda = torch.cuda.is_available()
     device = torch.device("cuda:0" if use_cuda else "cpu")
 
-    nrof_folds = config.dataset.cross_validation.num_fold
-    source_loader, target_loader, test_loaders_list = da_exp.Get_DADataloaders(config.experiment,
-                                                                               config)
+    source_loader = dataloaders.get_traindataloaders(config.source_dataset,
+                                                    config)
+    target_loader = dataloaders.get_traindataloaders(config.target_dataset,
+                                                     config)
+    evaluators_list = dataloaders.get_evaluators(config.evaluation_datasets,
+                                                 config)
+
     # Set up training model
     print('Building training model')
     if config.model.checkpoint:
@@ -98,14 +99,26 @@ def main(args):
 
     optimizer = optim.SGD(model.parameters(), lr=config.hyperparameters.learning_rate, momentum=0.9, nesterov=True, weight_decay=2e-4)
 
-    # if APEX_AVAILABLE and use_amp:
-
-
     scheduler = lr_scheduler.ExponentialLR(optimizer, config.hyperparameters.learning_rate_decay_factor)
 
     model = model.to(device)
 
-    plotter = utils.VisdomPlotter(env_name=experiment_name, port=config.visdom.port)
+    plotter = utils.VisdomPlotter(config.visdom.server ,env_name=experiment_name, port=config.visdom.port)
+
+    print('Fitting source dataset.')
+    gmixture = clustering.distance_supervised_gaussian_mixture(source_loader,
+                                                               model,
+                                                               device,
+                                                               _plotter=plotter,
+                                                               name='Source Gaussians')
+
+    print('Fitting target dataset.')
+    clustering.update_gaussian_mixture(gmixture,
+                                       target_loader,
+                                       model,
+                                       device,
+                                       _plotter=plotter,
+                                       name='Target Gaussians')
 
     print('DualTriplet loss training mode.')
     miner = miners.get_miner(config.miner,
@@ -113,6 +126,7 @@ def main(args):
                              config.hyperparameters.people_per_batch,
                              plotter,
                              deadzone_ratio=config.hyperparameters.deadzone_ratio)
+    miner.gmixture = gmixture
 
     loss = losses.DualtripletLoss(config.hyperparameters.margin,
                                   config.hyperparameters.lamda,
@@ -138,17 +152,12 @@ def main(args):
     while epoch < config.hyperparameters.n_epochs:
 
         # Validation
-        for test_name, test_loader, eval_function in test_loaders_list:
-            print('\nEvaluation on {}'.format(test_name))
-            eval_function(test_loader,
-                          model,
-                          device,
-                          test_name,
-                          plotter=plotter,
-                          epoch=epoch,
-                          nrof_folds=nrof_folds,
-                          distance_metric=0,
-                          val_far=config.hyperparameters.val_far)
+        for evaluator in evaluators_list:
+            print('\nEvaluation on {}'.format(evaluator.test_name))
+            evaluator.evaluate(model,
+                               device,
+                               plotter=plotter,
+                               epoch=epoch)
 
         # Training
         print('\nExperimentation {}'.format(config.experiment))

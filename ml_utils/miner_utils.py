@@ -5,8 +5,9 @@ from ml_utils import ml_utils
 
 def get_threshold(embeddings, labels):
     np_distance_matrix = ml_utils.pdist(embeddings).cpu().detach().numpy()
-    src_pos_center, src_neg_center = get_centers(np_distance_matrix, labels)
-    return (src_pos_center + src_neg_center) / 2.0
+    pos_center, neg_center = get_centers(np_distance_matrix, labels)
+    return pos_center + 1/3 * (pos_center + neg_center)
+    # return (pos_center + neg_center) / 2.0
 
 
 def get_centers(distance_matrix: np.array,

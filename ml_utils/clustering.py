@@ -1,5 +1,6 @@
 
 from sklearn.cluster import DBSCAN, AgglomerativeClustering, KMeans, SpectralClustering
+from sklearn.mixture import GaussianMixture
 from sklearn import metrics
 from sklearn.manifold import TSNE
 from sklearn.decomposition import PCA
@@ -9,7 +10,19 @@ import numpy as np
 from scipy.sparse import csgraph
 from scipy.spatial.distance import pdist, squareform
 
-from utils import plotter
+import torch
+
+from utils import plotter_utils, utils
+from ml_utils import ml_utils
+
+
+class Clustering_Technique():
+    def __init__(self,
+                 plotter: plotter_utils.VisdomPlotter=None):
+        self.plotter = plotter
+
+    def cluster(self, X):
+        pass
 
 
 def purity_score(y_true, y_pred):
@@ -22,7 +35,7 @@ def purity_score(y_true, y_pred):
 def evaluate_clustering(features: np.array,
                         ground_truth: np.array,
                         cluster_techniques_list: list,
-                        plotter: plotter.VisdomPlotter= None,
+                        plotter: plotter_utils.VisdomPlotter= None,
                         epoch:int=0,
                         max_clusters: int=10):
 
@@ -34,11 +47,14 @@ def evaluate_clustering(features: np.array,
                              n_iter_without_progress=1000, min_grad_norm=1e-7,
                              metric="euclidean", init="random", verbose=1,
                              random_state=None, method='exact', angle=0.2).fit_transform(features)
-        plotter.scatter_plot('Embeddings Ground Truth',
+        pca_features = PCA(n_components=2).fit_transform(features)
+        plotter.scatter_plot('TSNE Embeddings Ground Truth',
                              tsne_features,
                              ground_truth)
+        plotter.scatter_plot('PCA Embeddings Ground Truth',
+                             pca_features,
+                             ground_truth)
 
-    data_dict = {}
     for cluster_method in cluster_techniques_list:
         predictions, method_datadict = cluster_techniques(features,
                                                      cluster_method,
@@ -60,24 +76,26 @@ def evaluate_clustering(features: np.array,
                                  tsne_features,
                                  predictions)
 
-def cluster_techniques(features,
+def cluster_techniques(features: np.array,
                        cluster_methods: str,
                        max_clusters: int = 10):
 
+    max_clusters = min(features.shape[0] - 1, max_clusters)
+
     if cluster_methods == 'kmeans':
         labels, data_dict = kmeans_silhouetteanalysis(features,
-                                                      10,
+                                                      max_clusters,
                                                       verbose=False)
     elif cluster_methods == 'hac':
         labels, data_dict = hac_silhouetteanalysis(features,
-                                                      10,
+                                                      max_clusters,
                                                       verbose=False)
     elif cluster_methods == 'dbscan':
         labels, data_dict = dbscan_silhouetteanalysis(features,
                                                       verbose=False)
     elif cluster_methods == 'spectral':
         labels, data_dict = spectral_analysis(features,
-                                              10,
+                                              max_clusters,
                                               verbose=False)
     else:
         raise ValueError('Clustering technique {} not supported.'.format(
@@ -87,14 +105,6 @@ def cluster_techniques(features,
 
 
 def dbscan_silhouetteanalysis(X, metric='euclidean', min_samples=1, verbose=False):
-
-    #Reduce dimension
-    features = X
-    # pca = PCA(n_components=128, svd_solver='full')
-    # pca.fit(X)
-    # features = pca.transform(X)
-    # print('Initial features shape: {}'.format(X.shape))
-    # print('PCA features shape: {}'.format(features.shape))
 
     range_eps = np.arange(0.1, 1.0, 0.05)
     eps_list = []
@@ -110,7 +120,7 @@ def dbscan_silhouetteanalysis(X, metric='euclidean', min_samples=1, verbose=Fals
 
     for eps in tbar:
 
-        cluster_labels = DBSCAN(eps=eps, min_samples=min_samples, metric=metric).fit(features).labels_
+        cluster_labels = DBSCAN(eps=eps, min_samples=min_samples, metric=metric).fit(X).labels_
 
         n_clusters_ = len(set(cluster_labels)) - (1 if -1 in cluster_labels else 0)
         # n_noise_ = list(cluster_labels).count(-1)
@@ -119,7 +129,7 @@ def dbscan_silhouetteanalysis(X, metric='euclidean', min_samples=1, verbose=Fals
         # The silhouette_score gives the average value for all the samples.
         # This gives a perspective into the density and separation of the formed
         # clusters
-        silhouette_avg = metrics.silhouette_score(features, cluster_labels)
+        silhouette_avg = metrics.silhouette_score(X, cluster_labels)
         silhouette_scores.append(silhouette_avg)
         labels.append(cluster_labels)
         n_clusters.append(n_clusters_)
@@ -132,6 +142,46 @@ def dbscan_silhouetteanalysis(X, metric='euclidean', min_samples=1, verbose=Fals
                  'eps': eps_list[best_n_clusters_idx]}
 
     return labels[best_n_clusters_idx], data_dict
+
+
+class Kmeans_SilhouetteAnalysis(Clustering_Technique):
+    def __init__(self,
+                 max_clusters,
+                 verbose=False,
+                 plotter=None):
+        super().__init__(plotter=plotter)
+
+        self.max_clusters = max_clusters
+        self.verbose = verbose
+
+    def cluster(self,
+                X: np.array) -> (np.array, dict):
+        range_n_clusters = range(2, min(self.max_clusters + 1, X.shape[0]))
+        silhouette_scores = []
+        labels = []
+
+        if self.verbose:
+            tbar = tqdm.tqdm(range_n_clusters)
+        else:
+            tbar = range_n_clusters
+        for n_clusters in tbar:
+            # Initialize the clusterer with n_clusters value and a random generator
+            # seed of 10 for reproducibility.
+            clusterer = KMeans(n_clusters=n_clusters, random_state=10)
+            cluster_labels = clusterer.fit_predict(X)
+            labels.append(cluster_labels)
+
+            # The silhouette_score gives the average value for all the samples.
+            # This gives a perspective into the density and separation of the formed
+            # clusters
+            silhouette_avg = metrics.silhouette_score(X, cluster_labels)
+            silhouette_scores.append(silhouette_avg)
+
+        best_n_clusters_idx = silhouette_scores.index(max(silhouette_scores))
+        data_dict = {'silhouette_score': silhouette_scores[best_n_clusters_idx],
+                     'n_cluster': range_n_clusters[best_n_clusters_idx]}
+
+        return labels[best_n_clusters_idx], data_dict
 
 
 def kmeans_silhouetteanalysis(X, max_clusters, verbose=False):
@@ -161,6 +211,11 @@ def kmeans_silhouetteanalysis(X, max_clusters, verbose=False):
     best_n_clusters_idx = silhouette_scores.index(max(silhouette_scores))
     data_dict = {'silhouette_score': silhouette_scores[best_n_clusters_idx],
                  'n_cluster': range_n_clusters[best_n_clusters_idx]}
+
+    print('Kmeans clustering')
+    print('Number of cluster: {}'.format(range_n_clusters[best_n_clusters_idx]))
+    print('Cluster: {}'.format(list(range_n_clusters)))
+    print('Silhouette Score: {}'.format(silhouette_scores))
 
     return labels[best_n_clusters_idx], data_dict
 
@@ -196,23 +251,37 @@ def hac_silhouetteanalysis(X,
     data_dict = {'silhouette_score': silhouette_scores[best_n_clusters_idx],
                  'n_cluster': range_n_clusters[best_n_clusters_idx]}
 
+    print('HAC clustering')
+    print('Number of cluster: {}'.format(range_n_clusters[best_n_clusters_idx]))
+    print('Cluster: {}'.format(list(range_n_clusters)))
+    print('Silhouette Score: {}'.format(silhouette_scores))
+
     return labels[best_n_clusters_idx], data_dict
 
 
 def spectral_analysis(X,
                       max_clusters,
                       verbose=False,
-                      plotter: plotter.VisdomPlotter= None):
+                      plotter: plotter_utils.VisdomPlotter= None):
 
     affinity_matrix = getAffinityMatrix(X, k=7)
-    nb_clusters, eigenvalues, eigenvectors = eigenDecomposition(affinity_matrix)
+    nb_clusters_list, eigenvalues, eigenvectors = eigenDecomposition(affinity_matrix)
 
-    clustering_thecnique = SpectralClustering(n_clusters=nb_clusters[0],
+    nb_clusters = 2
+    for nb in nb_clusters_list:
+        if nb < max_clusters:
+            nb_clusters = nb
+
+    clustering_thecnique = SpectralClustering(n_clusters=nb_clusters,
                                               assign_labels="discretize",
                                               random_state=0).fit(X)
 
-    data_dict = {'eigendecomposition': nb_clusters,
-                 'n_cluster': nb_clusters[0]}
+    data_dict = {'eigendecomposition': nb_clusters_list,
+                 'n_cluster': nb_clusters}
+
+    print('Spectral clustering')
+    print('Number of cluster: {}'.format(nb_clusters))
+    print('Eigen decomposition: {}'.format(nb_clusters_list))
 
     return clustering_thecnique.labels_, data_dict
 
@@ -313,3 +382,76 @@ def spectral_clustering(X, max_clusters, verbose=False):
 #         print('Estimated number of noise points: %d' % n_noise_)
 #
 #         return np.array(labels)
+
+
+def distance_supervised_gaussian_mixture(loader,
+                                         model,
+                                         device,
+                                         _plotter=None,
+                                         name='gaussian_mixture') -> GaussianMixture:
+
+    model.eval()
+    distances = []
+    issame = []
+    tbar = tqdm.tqdm(loader)
+    for source_batch, source_labels in tbar:
+        source_batch = source_batch.to(device)
+        with torch.no_grad():
+            source_embeddings = model(source_batch)
+        distance_matrix = ml_utils.pdist(source_embeddings)
+        np_distance_matrix = distance_matrix.cpu().detach().numpy()
+        distances.append(np_distance_matrix[np.triu_indices(len(np_distance_matrix), k=1)])
+
+        issame_matrix = np.zeros((len(source_labels), len(source_labels)), dtype=np.int)
+        for x in range(len(source_labels)):
+            for y in range(len(source_labels)):
+                if source_labels[x] == source_labels[y]:
+                    issame_matrix[x][y] = 1
+        issame.append(issame_matrix[np.triu_indices(len(np_distance_matrix), k=1)])
+
+    distances = np.concatenate(distances)
+    issame = np.concatenate(issame)
+    gmixture = GaussianMixture(n_components=2, warm_start=True).fit(np.expand_dims(distances, axis=1),
+                                                                    y=np.expand_dims(issame, axis=1))
+
+    if _plotter:
+        _plotter.vis_1d_distribution(distances, name)
+
+        Y = np.linspace(0, max(distances), 200)
+        funtion1 = utils.gaussian(Y, gmixture.means_[0][0], np.sqrt(gmixture.covariances_[0][0]))
+        funtion2 = utils.gaussian(Y, gmixture.means_[1][0], np.sqrt(gmixture.covariances_[1][0]))
+        X = np.column_stack((Y, Y))
+        Y = np.column_stack((funtion1, funtion2))
+        _plotter.plot_curve('gaussian function', 'distances', ['g1', 'g2'], name, X, Y)
+
+    return gmixture
+
+def update_gaussian_mixture(gaussian_mixture: GaussianMixture,
+                            loader,
+                            model,
+                            device,
+                            _plotter: plotter_utils.VisdomPlotter=None,
+                            name='gaussian_mixture') -> None:
+    model.eval()
+    distances = []
+    tbar = tqdm.tqdm(loader)
+    for source_batch, source_labels in tbar:
+        source_batch = source_batch.to(device)
+        with torch.no_grad():
+            source_embeddings = model(source_batch)
+        distance_matrix = ml_utils.pdist(source_embeddings)
+        np_distance_matrix = distance_matrix.cpu().detach().numpy()
+        distances.append(np_distance_matrix[np.triu_indices(len(np_distance_matrix), k=1)])
+
+    distances = np.concatenate(distances)
+    gaussian_mixture.fit(np.expand_dims(distances, axis=1))
+
+    if _plotter:
+        _plotter.vis_1d_distribution(distances, name)
+
+        Y = np.linspace(0, max(distances), 200)
+        funtion1 = utils.gaussian(Y, gaussian_mixture.means_[0][0], np.sqrt(gaussian_mixture.covariances_[0][0]))
+        funtion2 = utils.gaussian(Y, gaussian_mixture.means_[1][0], np.sqrt(gaussian_mixture.covariances_[1][0]))
+        X = np.column_stack((Y, Y))
+        Y = np.column_stack((funtion1, funtion2))
+        _plotter.plot_curve('gaussian function', 'distances', ['g1', 'g2'], name, X, Y)

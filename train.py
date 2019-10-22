@@ -1,19 +1,16 @@
 import sys
 import os
 import argparse
-from datetime import datetime
 from shutil import copyfile
-import ntpath
 import json
 
 import torch
 import torch.optim as optim
 from torch import nn
 from torch.optim import lr_scheduler
-from torchvision import transforms
 
-from experiments import tripletloss_exp
-from ml_utils import trainer, losses, miners
+from dataset_utils import dataloaders
+from ml_utils import trainer, miners
 import evaluation
 import models
 import utils
@@ -27,16 +24,20 @@ def parse_arguments(argv):
 
     return parser.parse_args(argv)
 
-def path_leaf(path):
-    head, tail = ntpath.split(path)
-    return tail or ntpath.basename(head)
-
 def generate_experiment_name(config):
-    experiment_name = config.experiment
 
-    experiment_name += '_m{}'.format(config.hyperparameters.margin)
+    if config.debug:
+        experiment_name_test = 'debug'
+    else:
+        experiment_name = 'train_{}_m{}'.format(config.train_dataset, config.hyperparameters.margin)
 
-    return experiment_name
+        dir_count = 1
+        experiment_name_test = experiment_name + '_{:02d}'.format(dir_count)
+        while os.path.isdir(os.path.join(os.path.expanduser(config.output.output_dir), experiment_name_test)):
+            dir_count += 1
+            experiment_name_test = experiment_name + '_{:02d}'.format(dir_count)
+
+    return experiment_name_test
 
 def main(args):
 
@@ -47,17 +48,12 @@ def main(args):
 
     # Set up output directory
     experiment_name = generate_experiment_name(config)
-    if os.path.isdir(os.path.join(os.path.expanduser(config.output.output_dir), experiment_name)):
-        dir_count = 1
-        experiment_name += '_1'
-        while os.path.isdir(os.path.join(os.path.expanduser(config.output.output_dir), experiment_name)):
-            dir_count += 1
-            experiment_name = experiment_name[:-2] + '_{}'.format(dir_count)
     model_dir = os.path.join(os.path.expanduser(config.output.output_dir), experiment_name)
-    os.makedirs(model_dir)
+    if not os.path.exists(model_dir):
+        os.makedirs(model_dir)
     print('Model saved at {}'.format(model_dir))
 
-    config_filename = path_leaf(args.config)
+    config_filename = utils.path_leaf(args.config)
     copyfile(args.config, os.path.join(model_dir, config_filename))
 
     # CUDA for PyTorch
@@ -66,7 +62,10 @@ def main(args):
     # device = torch.device("cpu")
 
     # Get dataloaders
-    online_train_loader, test_container = tripletloss_exp.Get_TrainDataloaders(config.experiment, config)
+    train_loader = dataloaders.get_traindataloaders(config.train_dataset,
+                                                    config)
+    evaluators_list = dataloaders.get_evaluators(config.evaluation_datasets,
+                                                config)
 
     # Set up training model
     print('Building training model')
@@ -80,14 +79,13 @@ def main(args):
                               embedding_size=config.model.embedding_size,
                               imgnet_pretrained=config.model.pretrained_imagenet)
 
-    # optimizer = optim.Adam(model.parameters(), lr=lr, weight_decay=2e-4)
     optimizer = optim.SGD(model.parameters(), lr=config.hyperparameters.learning_rate, momentum=0.9, nesterov=True, weight_decay=2e-4)
-    # optimizer = optim.RMSprop(model.parameters(), lr=lr, eps=1.0, weight_decay=weight_decay, momentum=0.9, centered=False)
 
     # scheduler = lr_scheduler.StepLR(optimizer, 5, gamma=0.1)
-    scheduler = lr_scheduler.ExponentialLR(optimizer, config.hyperparameters.learning_rate_decay_factor)
+    # scheduler = lr_scheduler.ExponentialLR(optimizer, config.hyperparameters.learning_rate_decay_factor)
+    scheduler = lr_scheduler.CosineAnnealingLR(optimizer, T_max=config.hyperparameters.n_epochs, eta_min=1e-6)
 
-    plotter = utils.VisdomPlotter(env_name=experiment_name, port=config.visdom.port)
+    plotter = utils.VisdomPlotter(config.visdom.server, env_name=experiment_name, port=config.visdom.port)
 
     miner = miners.FunctionSemihardTripletSelector(config.hyperparameters.margin, plotter)
 
@@ -111,20 +109,16 @@ def main(args):
     while epoch < config.hyperparameters.n_epochs:
 
         # Validation
-        for test_name, test_loader, eval_function in test_container:
-            print('\nEvaluation on {}'.format(test_name))
-            eval_function(test_loader,
-                          model,
-                          device,
-                          test_name,
-                          plotter=plotter,
-                          epoch=epoch,
-                          distance_metric=0,
-                          val_far=config.hyperparameters.val_far)
+        for evaluator in evaluators_list:
+            print('\nEvaluation on {}'.format(evaluator.test_name))
+            evaluator.evaluate(model,
+                               device,
+                               plotter=plotter,
+                               epoch=epoch)
 
         # Training
         print('\nTrain Epoch {}'.format(epoch))
-        my_trainer.Train_Epoch(online_train_loader, epoch)
+        my_trainer.Train_Epoch(train_loader, epoch)
 
         # Save model
         if not (epoch + 1) % config.output.save_interval:
@@ -150,6 +144,8 @@ def main(args):
                 'embedding_size': config.model.embedding_size,
                 }, model_file_path)
     print('Finish.')
+
+    return model
 
 if __name__ == '__main__':
     main(parse_arguments(sys.argv[1:]))

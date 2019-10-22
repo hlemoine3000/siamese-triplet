@@ -1,29 +1,28 @@
 
 import torch
 from torch.utils import data
+from torchvision import transforms
 
 import dataset_utils
-from dataset_utils import sampler, dataset
-from dataset_utils import bbt, coxs2v, lfw, vggface2, mnistBig, mnist, usps, uspsBig
-import evaluation
-
-def Get_ImageFolderLoader(data_dir,
-                 data_transform,
-                 people_per_batch,
-                 images_per_person):
+import utils
 
 
-    train_set = dataset.DatasetFolder(data_dir, transform=data_transform)
+def get_image_folder_loader(data_dir,
+                            data_transform,
+                            people_per_batch,
+                            images_per_person,
+                            num_workers=8):
 
-    batch_sampler = sampler.Random_BalancedBatchSampler(train_set,
+    train_set = dataset_utils.dataset.DatasetFolder(data_dir, transform=data_transform)
+
+    batch_sampler = dataset_utils.sampler.Random_BalancedBatchSampler(train_set,
                                                         people_per_batch,
                                                         images_per_person,
                                                         max_batches=1000)
 
     return torch.utils.data.DataLoader(train_set,
-                                       num_workers=4,
-                                       batch_sampler=batch_sampler,
-                                       pin_memory=True)
+                                       num_workers=num_workers,
+                                       batch_sampler=batch_sampler)
 
 
 def Get_PairsImageFolderLoader(data_dir,
@@ -41,157 +40,118 @@ def Get_PairsImageFolderLoader(data_dir,
     return torch.utils.data.DataLoader(test_set, num_workers=num_workers, batch_size=batch_size)
 
 
-def get_testdataloaders(config,
-                        data_transform,
-                        batch_size,
-                        folds,
-                        nrof_folds,
-                        dataset_list):
+def get_evaluators(dataset_list: list,
+                       config) -> list:
 
-    test_loaders_list = []
+    evaluators_list = []
 
-    # VGGFACE2 dataset
-    if 'vggface2' in dataset_list:
-        data_loader = vggface2.get_vggface2_testset(config.dataset.vggface2.test_dir,
-                                           config.dataset.vggface2.pairs_file,
-                                           data_transform,
-                                           batch_size,
-                                           preload=False)
-        test_loaders_list.append(('vggface2', data_loader, evaluation.pair_evaluate))
+    eval_transforms = transforms.Compose([
+        transforms.Resize((config.hyperparameters.image_size, config.hyperparameters.image_size), interpolation=1),
+        transforms.ToTensor()
+    ])
 
-    # LFW dataset
-    if 'lfw' in dataset_list:
-        data_loader = lfw.get_lfw_testset(config.dataset.lfw.test_dir,
-                                      config.dataset.lfw.pairs_file,
-                                      data_transform,
-                                      batch_size,
-                                      preload=False)
-        test_loaders_list.append(('lfw', data_loader, evaluation.pair_evaluate))
+    fold_tool = utils.FoldGenerator(config.dataset.cross_validation.num_fold,
+                                    config.dataset.cross_validation.num_train_folds,
+                                    config.dataset.cross_validation.num_val_folds)
+    train_folds, val_folds, test_folds = fold_tool.get_fold()
 
-    # COXS2V dataset
-    if 'cox_video1' in dataset_list:
-        data_loader = coxs2v.get_coxs2v_testset(config.dataset.coxs2v.still_dir,
-                                                config.dataset.coxs2v.video1_dir,
-                                                config.dataset.coxs2v.video1_pairs,
-                                                folds,
-                                                nrof_folds,
-                                                data_transform,
-                                                batch_size,
-                                                preload=True)
-        test_loaders_list.append(('cox_video1', data_loader, evaluation.pair_evaluate))
+    for dataset_name in dataset_list:
+        # VGGFACE2 dataset
+        if 'vggface2' == dataset_name:
+            evaluator = dataset_utils.vggface2.get_vggface2_evaluator(config.dataset.vggface2.test_dir,
+                                                          config.dataset.vggface2.pairs_file,
+                                                          eval_transforms,
+                                                          config.hyperparameters.batch_size,
+                                                          preload=False)
+        # LFW dataset
+        elif 'lfw' == dataset_name:
+            evaluator = dataset_utils.lfw.get_evaluator(config.dataset.lfw,
+                                          eval_transforms,
+                                          config.hyperparameters.batch_size,
+                                          preload=False)
+        # COXS2V dataset
+        elif 'cox_video' in dataset_name:
+            evaluator = dataset_utils.coxs2v.get_evaluator(dataset_name,
+                                             config.dataset.coxs2v,
+                                             test_folds,
+                                             config.dataset.cross_validation.num_fold,
+                                             eval_transforms,
+                                             config.hyperparameters.batch_size,
+                                             preload=True)
+        # BBT generated dataset
+        elif 'bbt' == dataset_name:
+            from dataset_utils import bbt
+            evaluator = bbt.get_evaluator(config.dataset.bbt.dataset_path,
+                                            eval_transforms,
+                                            config.hyperparameters.batch_size)
+        # MNIST dataset
+        elif 'mnist' == dataset_name:
+            evaluator = dataset_utils.mnist.get_evaluator(batch_size=config.hyperparameters.batch_size)
+        # USPS dataset
+        elif 'usps' == dataset_name:
+            evaluator = dataset_utils.usps.get_evaluator(batch_size=config.hyperparameters.batch_size)
+        else:
+            raise Exception('Datatset {} not supported.'.format(dataset_name))
 
-    if 'cox_video2' in dataset_list:
-        data_loader = coxs2v.get_coxs2v_testset(config.dataset.coxs2v.still_dir,
-                                                config.dataset.coxs2v.video2_dir,
-                                                config.dataset.coxs2v.video2_pairs,
-                                                folds,
-                                                nrof_folds,
-                                                data_transform,
-                                                batch_size,
-                                                preload=True)
-        test_loaders_list.append(('cox_video2', data_loader, evaluation.pair_evaluate))
+        evaluators_list.append(evaluator)
 
-    if 'cox_video3' in dataset_list:
-        data_loader = coxs2v.get_coxs2v_testset(config.dataset.coxs2v.still_dir,
-                                                config.dataset.coxs2v.video3_dir,
-                                                config.dataset.coxs2v.video3_pairs,
-                                                folds,
-                                                nrof_folds,
-                                                data_transform,
-                                                batch_size,
-                                                preload=True)
-        test_loaders_list.append(('cox_video3', data_loader, evaluation.pair_evaluate))
-
-    if 'cox_video4' in dataset_list:
-        data_loader = coxs2v.get_coxs2v_testset(config.dataset.coxs2v.still_dir,
-                                                config.dataset.coxs2v.video4_dir,
-                                                config.dataset.coxs2v.video4_pairs,
-                                                folds,
-                                                nrof_folds,
-                                                data_transform,
-                                                batch_size,
-                                                preload=True)
-        test_loaders_list.append(('cox_video4', data_loader, evaluation.pair_evaluate))
-
-    if 'bbt_ep01' in dataset_list:
-        data_loader = bbt.get_testset(config.dataset.bbt.video_track_path,
-                                      data_transform,
-                                      batch_size)
-        test_loaders_list.append(('bbt_ep01', data_loader, evaluation.video_description_evaluate))
-
-    if 'mnist' in dataset_list:
-        data_loader = mnist.get_mnist("val",
-                                      batch_size=config.hyperparameters.batch_size)
-        test_loaders_list.append(('cox_video4', data_loader, evaluation.pair_evaluate))
-
-    return test_loaders_list
+    return evaluators_list
 
 
-def get_traindataloaders(config,
-                         data_transform,
-                         people_per_batch,
-                         images_per_person,
-                         folds,
-                         nrof_folds,
-                         is_vggface2=False,
-                         is_cox_video1=False,
-                         is_cox_video2=False,
-                         is_cox_video3=False,
-                         is_cox_video4=False):
+def get_traindataloaders(dataset_name: str,
+                         config) -> data.DataLoader:
 
-    train_loaders_list = []
+    transfrom_list = [transforms.Resize((config.hyperparameters.image_size, config.hyperparameters.image_size), interpolation=1)]
+    if config.hyperparameters.random_hor_flip:
+        transfrom_list.append(transforms.RandomHorizontalFlip())
+    transfrom_list.append(transforms.ToTensor())
+    train_transforms = transforms.Compose(transfrom_list)
+
+    fold_tool = utils.FoldGenerator(config.dataset.cross_validation.num_fold,
+                                    config.dataset.cross_validation.num_train_folds,
+                                    config.dataset.cross_validation.num_val_folds)
+    train_folds, val_folds, test_folds = fold_tool.get_fold()
 
     # VGGFACE2 dataset
-    if is_vggface2:
-        data_loader = vggface2.get_vggface2_trainset(config.dataset.vggface2.train_dir,
-                                                     data_transform,
-                                                     people_per_batch,
-                                                     images_per_person)
-        train_loaders_list.append(('vggface2', data_loader))
-
+    if dataset_name == 'vggface2':
+        data_loader = dataset_utils.vggface2.get_vggface2_trainset(config.dataset.vggface2.train_dir,
+                                                     train_transforms,
+                                                     config.hyperparameters.people_per_batch,
+                                                     config.hyperparameters.images_per_person)
     # COXS2V dataset
-    if is_cox_video1:
-        data_loader = coxs2v.get_coxs2v_trainset(config.dataset.coxs2v.still_dir,
-                                                 config.dataset.coxs2v.video1_dir,
-                                                 config.dataset.coxs2v.video1_pairs,
-                                                 folds,
-                                                 nrof_folds,
-                                                 data_transform,
-                                                 people_per_batch,
-                                                 images_per_person)
-        train_loaders_list.append(('cox_video1', data_loader))
+    elif 'cox_video' in dataset_name:
+        data_loader = dataset_utils.coxs2v.get_coxs2v_trainset(dataset_name,
+                                                 config.dataset.coxs2v,
+                                                 train_folds,
+                                                 config.dataset.cross_validation.num_fold,
+                                                 train_transforms,
+                                                 config.hyperparameters.people_per_batch,
+                                                 config.hyperparameters.images_per_person)
+    # BBT generated dataset
+    elif dataset_name == 'bbt':
+        data_loader = dataset_utils.bbt.get_trainset(config.dataset.bbt.dataset_path,
+                                       config.hyperparameters.images_per_person,
+                                       transform=train_transforms)
+    # Movie generated dataset
+    elif dataset_name == 'movie':
+        data_loader = dataset_utils.movie.get_trainset(config.dataset.movie.dataset_path,
+                                                     config.hyperparameters.images_per_person,
+                                                     transform=train_transforms)
+    # MNIST dataset
+    elif dataset_name == "mnist":
+        data_loader = dataset_utils.mnist.get_mnist_trainset(batch_size=config.hyperparameters.batch_size,
+                                               small=True)
+    elif dataset_name == "mnistbig":
+        data_loader = dataset_utils.mnist.get_mnist_trainset(batch_size=config.hyperparameters.batch_size,
+                                               small=False)
+    # USPS dataset
+    elif dataset_name == 'usps':
+        data_loader = dataset_utils.usps.get_usps_trainset(batch_size=config.hyperparameters.batch_size,
+                                             small=True)
+    elif dataset_name == 'uspsbig':
+        data_loader = dataset_utils.usps.get_usps_trainset(batch_size=config.hyperparameters.batch_size,
+                                             small=False)
+    else:
+        raise Exception('Datatset {} not supported.'.format(dataset_name))
 
-    if is_cox_video2:
-        data_loader = coxs2v.get_coxs2v_trainset(config.dataset.coxs2v.still_dir,
-                                                 config.dataset.coxs2v.video2_dir,
-                                                 config.dataset.coxs2v.video2_pairs,
-                                                 folds,
-                                                 nrof_folds,
-                                                 data_transform,
-                                                 people_per_batch,
-                                                 images_per_person)
-        train_loaders_list.append(('cox_video2', data_loader))
-
-    if is_cox_video3:
-        data_loader = coxs2v.get_coxs2v_trainset(config.dataset.coxs2v.still_dir,
-                                                 config.dataset.coxs2v.video3_dir,
-                                                 config.dataset.coxs2v.video3_pairs,
-                                                 folds,
-                                                 nrof_folds,
-                                                 data_transform,
-                                                 people_per_batch,
-                                                 images_per_person)
-        train_loaders_list.append(('cox_video3', data_loader))
-
-    if is_cox_video4:
-        data_loader = coxs2v.get_coxs2v_trainset(config.dataset.coxs2v.still_dir,
-                                                 config.dataset.coxs2v.video4_dir,
-                                                 config.dataset.coxs2v.video4_pairs,
-                                                 folds,
-                                                 nrof_folds,
-                                                 data_transform,
-                                                 people_per_batch,
-                                                 images_per_person)
-        train_loaders_list.append(('cox_video4', data_loader))
-
-    return train_loaders_list
+    return data_loader

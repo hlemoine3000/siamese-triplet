@@ -61,7 +61,7 @@
 
   "hyperparameters": {
 
-    "margin": 5.0,
+    "margin": 2.0,
     "lamda": [1.0, 1.0],
 
     "n_epochs": 50,
@@ -73,7 +73,7 @@
     "learning_rate": 0.0005,
     "learning_rate_decay_factor": 0.98,
     "batch_size": 64,
-    "deadzone_ratio": 0.1,
+    "deadzone_ratio": 0.4,
 
     "val_far": 1e-2,
 
@@ -83,6 +83,7 @@
   },
 
   "visdom": {
+    "server": "turing.livia.etsmtl.ca",
     "port": 8097,
     "log_interval": 5
   }

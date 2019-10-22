@@ -90,17 +90,17 @@ def main(args):
                                                       config.hyperparameters.people_per_batch,
                                                       config.hyperparameters.images_per_person)
 
-    test_loaders_list = dataloaders.get_testdataloaders(config,
-                                                        data_transform,
-                                                        test_batch_size,
-                                                        test_folds,
-                                                        nrof_folds,
-                                                        is_vggface2=False,
-                                                        is_lfw=True,
-                                                        is_cox_video1=False,
-                                                        is_cox_video2=True,
-                                                        is_cox_video3=False,
-                                                        is_cox_video4=True)
+    test_loaders_list = dataloaders.get_testevaluators(config,
+                                                       data_transform,
+                                                       test_batch_size,
+                                                       test_folds,
+                                                       nrof_folds,
+                                                       is_vggface2=False,
+                                                       is_lfw=True,
+                                                       is_cox_video1=False,
+                                                       is_cox_video2=True,
+                                                       is_cox_video3=False,
+                                                       is_cox_video4=True)
     ###################
     # DATALOADERS END #
     ###################

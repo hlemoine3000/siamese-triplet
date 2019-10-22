@@ -1,7 +1,10 @@
 {
   "name": "config",
   "version": "1.0.0",
-  "experiment": "train_vggface2",
+  "debug": false,
+
+  "train_dataset": "vggface2",
+  "evaluation_datasets": ["lfw"],
 
   "train_mode": {
     "mode": "tripletloss",
@@ -17,21 +20,29 @@
 
     "lfw": {
       "test_dir": "/export/livia/data/lemoineh/lfw/lfw_mtcnnpy_160",
-      "pairs_file": "dataset_utils/pair_files/new_lfw_pairs.txt"
+      "pairs_file": "dataset_utils/pair_files/lfw_pairs.txt"
     },
 
     "coxs2v": {
       "still_dir": "/export/livia/data/lemoineh/COX-S2V/COX-S2V-Still-MTCNN160",
 
-      "video1_dir": "/export/livia/data/lemoineh/COX-S2V/COX-S2V-Video-MTCNN160/video1",
-      "video2_dir": "/export/livia/data/lemoineh/COX-S2V/COX-S2V-Video-MTCNN160/video2",
-      "video3_dir": "/export/livia/data/lemoineh/COX-S2V/COX-S2V-Video-MTCNN160/video3",
-      "video4_dir": "/export/livia/data/lemoineh/COX-S2V/COX-S2V-Video-MTCNN160/video4",
+      "cox_video1_dir": "/export/livia/data/lemoineh/COX-S2V/COX-S2V-Video-MTCNN160/video1",
+      "cox_video2_dir": "/export/livia/data/lemoineh/COX-S2V/COX-S2V-Video-MTCNN160/video2",
+      "cox_video3_dir": "/export/livia/data/lemoineh/COX-S2V/COX-S2V-Video-MTCNN160/video3",
+      "cox_video4_dir": "/export/livia/data/lemoineh/COX-S2V/COX-S2V-Video-MTCNN160/video4",
 
-      "video1_pairs": "dataset_utils/pair_files/coxs2v/video1_pairs.txt",
-      "video2_pairs": "dataset_utils/pair_files/coxs2v/video2_pairs.txt",
-      "video3_pairs": "dataset_utils/pair_files/coxs2v/video3_pairs.txt",
-      "video4_pairs": "dataset_utils/pair_files/coxs2v/video4_pairs.txt"
+      "cox_video1_pairs": "dataset_utils/pair_files/coxs2v/video1_pairs.txt",
+      "cox_video2_pairs": "dataset_utils/pair_files/coxs2v/video2_pairs.txt",
+      "cox_video3_pairs": "dataset_utils/pair_files/coxs2v/video3_pairs.txt",
+      "cox_video4_pairs": "dataset_utils/pair_files/coxs2v/video4_pairs.txt"
+    },
+
+    "bbt": {
+      "dataset_path": "/export/livia/data/lemoineh/BBT/test",
+      "movie_path": "/export/livia/data/lemoineh/BBT/bbts01e01.mkv",
+      "annotation_path": "/export/livia/data/lemoineh/CVPR2013_PersonID_data/bbt_s01e01_facetracks.mat",
+      "video_track_path": "/export/livia/data/lemoineh/BBT/ep01",
+      "num_frame": 1000
     },
 
     "cross_validation": {
@@ -48,21 +59,22 @@
 
   "model": {
     "model_arch": "resnet50",
-    "pretrained_imagenet": true,
-    "checkpoint": false,
-    "checkpoint_path": "/export/livia/data/lemoineh/torch_facetripletloss/models/TripletLossPlots6/model_199.pth",
+    "pretrained_imagenet": false,
+    "checkpoint": true,
+    "checkpoint_path": "/export/livia/data/lemoineh/torch_facetripletloss/models/train_vggface2_m0.2_01/model_500.pth",
+    "checkpoint_path2": "/export/livia/data/lemoineh/torch_facetripletloss/models/TripletLossPlots6/model_219.pth",
     "embedding_size": 128
   },
 
   "hyperparameters": {
     "margin": 0.2,
-    "n_epochs": 500,
+    "n_epochs": 100,
     "image_size": 160,
     "images_per_person": 5,
     "people_per_batch": 40,
 
     "optimizer": "SGD",
-    "learning_rate": 0.01,
+    "learning_rate": 0.0005,
     "learning_rate_decay_epochs": 4,
     "learning_rate_decay_factor": 0.99,
     "weight_decay": 2e-4,
@@ -76,7 +88,7 @@
   },
 
   "visdom": {
-    "environment_name": "train_vggface2",
+    "server": "turing.livia.etsmtl.ca",
     "port": 8097,
     "log_interval": 50
   }

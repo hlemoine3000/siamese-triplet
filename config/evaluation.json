@@ -29,9 +29,8 @@
     },
 
     "bbt": {
-      "ep01_dir": "/export/livia/data/lemoineh/BBT/ep01",
-      "video_track_path": "/export/livia/data/lemoineh/BBT/ep01",
-      "pkl_dataset_path": "/export/livia/data/lemoineh/torch_facetripletloss/roi/labeled_roi.pkl"
+      "dataset_path": "/export/livia/data/lemoineh/BBT/test",
+      "ep01_dir": "/export/livia/data/lemoineh/BBT/ep01"
     },
 
     "cross_validation": {
@@ -80,7 +79,7 @@
   },
 
   "visdom": {
-    "environment_name": "evaluation_results",
+    "server": "turing.livia.etsmtl.ca",
     "port": 8097,
     "log_interval": 5
   }
